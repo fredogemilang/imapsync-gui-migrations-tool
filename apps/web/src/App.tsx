@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { api } from './lib/api';
+import { startWizardIdleWatcher } from './components/WizardContext';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Overview } from './pages/Overview';
@@ -9,6 +10,9 @@ import { MigrationStep2 } from './pages/MigrationStep2';
 import { MigrationStep3 } from './pages/MigrationStep3';
 import { YourMigration } from './pages/YourMigration';
 import { BulkStep1 } from './pages/BulkStep1';
+import { BulkStep2 } from './pages/BulkStep2';
+import { BulkStep3 } from './pages/BulkStep3';
+import { YourBulkMigration } from './pages/YourBulkMigration';
 import { Settings } from './pages/Settings';
 import { ChangePassword } from './pages/ChangePassword';
 
@@ -21,6 +25,11 @@ export default function App() {
       .then(() => setAuthed(true))
       .catch(() => setAuthed(false));
   }, []);
+
+  // Background watcher — wipes wizard (incl. plaintext IMAP passwords) after
+  // 10 min of no setter activity. Belt-and-suspenders with the storage-level
+  // expiry check on rehydration.
+  useEffect(() => startWizardIdleWatcher(), []);
 
   if (authed === null) {
     return (
@@ -56,6 +65,9 @@ export default function App() {
         <Route path="/migrations/:id/progress" element={<MigrationStep3 />} />
         <Route path="/migrations/:id" element={<YourMigration />} />
         <Route path="/bulk/new" element={<BulkStep1 />} />
+        <Route path="/bulk/new/step2" element={<BulkStep2 />} />
+        <Route path="/bulk/:id/progress" element={<BulkStep3 />} />
+        <Route path="/bulk/:id" element={<YourBulkMigration />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/change-password" element={<ChangePassword />} />
         <Route path="*" element={<Navigate to="/" replace />} />

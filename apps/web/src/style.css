@@ -1,5 +1,11 @@
 @import 'tailwindcss';
 
+/* Enable class-based dark mode in Tailwind CSS v4 — toggling `.dark` on
+   the <html> element flips every `dark:` variant. The Layout's profile
+   menu wires Light / Dark / System buttons to `applyTheme()` which
+   add/removes this class on `documentElement`. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --font-sans: 'Inter', sans-serif;
   --bg-start: #e7f2fd;
@@ -8,6 +14,24 @@
   --primary-dark: #1a237e;
   --primary-container: #263299;
   --surf: #ffffff;
+  --surf-border: rgba(255, 255, 255, 0.5);
+  --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.05),
+    0 8px 10px -6px rgba(0, 0, 0, 0.01);
+}
+
+.dark {
+  /* Background gradient → near-black */
+  --bg-start: #000000;
+  --bg-end: #131313;
+  /* Brand blues lighten a notch for accessible contrast on dark surfaces */
+  --primary: #7986cb;
+  --primary-dark: #9fa8da;
+  --primary-container: #3f51b5;
+  /* Surfaces become flat near-black with subtle white borders */
+  --surf: #121212;
+  --surf-border: rgba(255, 255, 255, 0.08);
+  --shadow-card: 0 10px 30px -5px rgba(0, 0, 0, 0.5),
+    0 8px 15px -6px rgba(0, 0, 0, 0.3);
 }
 
 @theme {
@@ -37,19 +61,22 @@ body {
   background-attachment: fixed;
   color: #1e293b;
 }
+.dark body {
+  color: #cbd5e1;
+}
 
 .startup-card {
   background: var(--color-surface);
-  box-shadow:
-    0 10px 25px -5px rgba(0, 0, 0, 0.05),
-    0 8px 10px -6px rgba(0, 0, 0, 0.01);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--surf-border);
 }
 
 button {
   cursor: pointer;
 }
-button:disabled {
+button:disabled,
+button[disabled],
+.cursor-not-allowed {
   cursor: not-allowed;
 }
 
@@ -60,4 +87,423 @@ button:disabled {
 *::-webkit-scrollbar-thumb {
   background-color: rgba(32, 43, 140, 0.25);
   border-radius: 9999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(32, 43, 140, 0.45);
+}
+.dark *::-webkit-scrollbar-thumb {
+  background-color: rgba(121, 134, 203, 0.2);
+}
+.dark *::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(121, 134, 203, 0.35);
+}
+
+/* Flying envelope animation used on the migration progress page.
+   Three rows share the same 2.6s loop with staggered delays so the
+   stream looks continuous. Pausable via `animation-play-state`. */
+@keyframes flyEnvelope {
+  0% {
+    transform: translate(-200px, 0) scale(0.6) rotate(-6deg);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.9;
+  }
+  75% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(60px, 0) scale(0.85) rotate(6deg);
+    opacity: 0;
+  }
+}
+.animate-envelope-1 {
+  animation: flyEnvelope 2.6s infinite linear;
+}
+.animate-envelope-2 {
+  animation: flyEnvelope 2.6s infinite linear;
+  animation-delay: 0.85s;
+}
+.animate-envelope-3 {
+  animation: flyEnvelope 2.6s infinite linear;
+  animation-delay: 1.7s;
+}
+
+/* ============================================================================
+ * DARK MODE GLOBAL OVERRIDES
+ * ----------------------------------------------------------------------------
+ * Ported from `mockup/template/src/style.css`. Approach: blanket-override
+ * Tailwind utility classes within `.dark` scope so we don't need to add
+ * `dark:` variants on every component. Trade-off is `!important` is used
+ * heavily, but it's contained to the `.dark` ancestor so light mode is
+ * 100% unaffected.
+ *
+ * If you find a missing utility in dark mode, just add another `.dark .xxx`
+ * rule below — the pattern is mechanical.
+ * ============================================================================ */
+
+/* Text colors */
+.dark .text-primary-dark {
+  color: #e2e8f0 !important;
+}
+.dark .text-primary {
+  color: #cbd5e1 !important;
+}
+.dark .text-primary\/80 {
+  color: #a3b3c9 !important;
+}
+.dark .text-primary\/70 {
+  color: #8a99ad !important;
+}
+.dark .text-slate-800 {
+  color: #e2e8f0 !important;
+}
+.dark .text-slate-700 {
+  color: #cbd5e1 !important;
+}
+.dark .text-slate-600 {
+  color: #94a3b8 !important;
+}
+.dark .text-slate-500 {
+  color: #94a3b8 !important;
+}
+.dark .text-slate-400 {
+  color: #8a99ad !important;
+}
+.dark .text-slate-300 {
+  color: #64748b !important;
+}
+
+/* Borders */
+.dark .border-slate-200\/85,
+.dark .border-slate-200\/80 {
+  border-color: rgba(255, 255, 255, 0.03) !important;
+}
+.dark .border-slate-200\/60,
+.dark .border-slate-200\/40 {
+  border-color: rgba(255, 255, 255, 0.02) !important;
+}
+.dark .border-slate-100,
+.dark .border-slate-100\/80,
+.dark .border-slate-100\/60 {
+  border-color: rgba(255, 255, 255, 0.02) !important;
+}
+.dark .border-slate-200 {
+  border-color: rgba(255, 255, 255, 0.04) !important;
+}
+.dark .border-slate-300\/50 {
+  border-color: rgba(255, 255, 255, 0.07) !important;
+}
+/* Tailwind v4 divide-* utilities apply `border-top-color` on every child
+   except the first. Tailwind's selector is `> :not(:last-child):not([hidden])`
+   or `> * + *` depending on the version; we cover both shapes plus the
+   shorthand `border-color` in case a future version flips. */
+.dark [class*='divide-slate-'] > :not([hidden]) ~ :not([hidden]),
+.dark [class*='divide-'] > * + *,
+.dark .divide-y > * {
+  border-color: rgba(255, 255, 255, 0.05) !important;
+  border-top-color: rgba(255, 255, 255, 0.05) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.05) !important;
+}
+/* The first child of divide-y has no top border in Tailwind's rule, but
+   if our cascade ever flips it on by accident, suppress it. */
+.dark .divide-y > :first-child,
+.dark [class*='divide-'] > :first-child {
+  border-top-color: transparent !important;
+}
+
+/* Backgrounds — white surfaces become near-black */
+.dark .bg-white {
+  background-color: #121212 !important;
+}
+.dark .bg-white\/95 {
+  background-color: rgba(18, 18, 18, 0.95) !important;
+}
+.dark .bg-white\/90 {
+  background-color: rgba(18, 18, 18, 0.9) !important;
+}
+.dark .bg-white\/80 {
+  background-color: rgba(9, 9, 9, 0.75) !important;
+  backdrop-filter: blur(20px);
+}
+.dark .bg-white\/50 {
+  background-color: rgba(255, 255, 255, 0.02) !important;
+}
+.dark .bg-white\/40 {
+  background-color: rgba(255, 255, 255, 0.02) !important;
+}
+.dark .bg-white\/25 {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+.dark .bg-white\/20 {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+}
+.dark .bg-white\/10 {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+}
+
+/* Slate / input / table backgrounds */
+.dark .bg-slate-50 {
+  background-color: #161616 !important;
+}
+.dark .bg-slate-50\/20,
+.dark .bg-slate-50\/30 {
+  background-color: rgba(255, 255, 255, 0.015) !important;
+}
+.dark .bg-slate-50\/40 {
+  background-color: rgba(255, 255, 255, 0.02) !important;
+}
+.dark .bg-slate-50\/50,
+.dark .bg-slate-50\/65 {
+  background-color: rgba(255, 255, 255, 0.02) !important;
+}
+.dark .bg-slate-100 {
+  background-color: #1c1c1c !important;
+}
+.dark .bg-slate-100\/50,
+.dark .bg-slate-100\/70,
+.dark .bg-slate-100\/80 {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+}
+.dark .bg-slate-200 {
+  background-color: #242424 !important;
+}
+.dark .bg-slate-900 {
+  background-color: #050505 !important;
+}
+.dark .bg-slate-950\/60 {
+  background-color: rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Hover states for the above */
+.dark .hover\:bg-slate-50:hover {
+  background-color: #1c1c1c !important;
+}
+.dark .hover\:bg-slate-50\/30:hover,
+.dark .hover\:bg-slate-50\/40:hover,
+.dark .hover\:bg-slate-50\/65:hover {
+  background-color: rgba(255, 255, 255, 0.02) !important;
+}
+.dark .hover\:bg-slate-100:hover {
+  background-color: #242424 !important;
+}
+.dark .hover\:bg-slate-200:hover {
+  background-color: #2d2d2d !important;
+}
+.dark .group:hover .group-hover\:bg-slate-50,
+.dark .group:hover .group-hover\:bg-slate-100\/50 {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+}
+
+/* Header + sticky bottom action bar — frosted dark glass */
+.dark header[data-purpose='main-header'] {
+  background-color: rgba(9, 9, 9, 0.8) !important;
+  backdrop-filter: blur(20px) !important;
+  border-bottom-color: rgba(255, 255, 255, 0.06) !important;
+}
+.dark main > .absolute.bottom-0.inset-x-0 {
+  background-color: rgba(9, 9, 9, 0.8) !important;
+  backdrop-filter: blur(20px) !important;
+  border-top-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Sidebar glassmorphism */
+aside[data-purpose*='sidebar'] {
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0.1));
+  backdrop-filter: blur(16px);
+}
+.dark aside[data-purpose*='sidebar'] {
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.005)),
+    linear-gradient(to bottom, #000000, #070a18) !important;
+  backdrop-filter: blur(16px) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Bottom navigation */
+.dark nav[data-purpose='bottom-nav'] {
+  background-color: rgba(9, 9, 9, 0.85) !important;
+  backdrop-filter: blur(24px) !important;
+  border-top-color: rgba(255, 255, 255, 0.06) !important;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.4) !important;
+}
+.dark nav[data-purpose='bottom-nav'] .group:hover .group-hover\:bg-slate-50 {
+  background-color: rgba(59, 130, 246, 0.18) !important;
+}
+
+/* Primary buttons & accent blues */
+.dark .bg-primary-container {
+  background-color: #202b8c !important;
+}
+.dark .hover\:bg-primary-dark:hover {
+  background-color: #2837b2 !important;
+}
+.dark .bg-primary-dark {
+  background-color: #202b8c !important;
+}
+.dark .hover\:bg-primary:hover {
+  background-color: #2837b2 !important;
+}
+.dark .text-blue-500 {
+  color: #3b82f6 !important;
+}
+.dark .text-blue-600 {
+  color: #60a5fa !important;
+}
+.dark .hover\:text-blue-600:hover {
+  color: #93c5fd !important;
+}
+.dark .bg-blue-50 {
+  background-color: rgba(59, 130, 246, 0.18) !important;
+}
+.dark .border-blue-100,
+.dark .border-blue-200 {
+  border-color: rgba(59, 130, 246, 0.3) !important;
+}
+.dark .bg-blue-500,
+.dark .hover\:bg-blue-600:hover {
+  background-color: #3b82f6 !important;
+}
+
+/* Status palettes (success / warning / error / info) toned for dark surfaces */
+.dark .bg-emerald-50 {
+  background-color: rgba(16, 185, 129, 0.08) !important;
+}
+.dark .border-emerald-200,
+.dark .border-emerald-200\/60 {
+  border-color: rgba(16, 185, 129, 0.25) !important;
+}
+.dark .text-emerald-500,
+.dark .text-emerald-600,
+.dark .text-emerald-700,
+.dark .text-emerald-800 {
+  color: #a7f3d0 !important;
+}
+.dark .bg-amber-50 {
+  background-color: rgba(245, 158, 11, 0.08) !important;
+  border-color: rgba(245, 158, 11, 0.15) !important;
+}
+.dark .border-amber-200 {
+  border-color: rgba(245, 158, 11, 0.25) !important;
+}
+.dark .text-amber-500,
+.dark .text-amber-600,
+.dark .text-amber-700,
+.dark .text-amber-800 {
+  color: #fde68a !important;
+}
+.dark .bg-red-50 {
+  background-color: rgba(239, 68, 68, 0.1) !important;
+}
+.dark .bg-red-50\/30 {
+  background-color: rgba(239, 68, 68, 0.06) !important;
+}
+.dark .border-red-200,
+.dark .border-red-200\/80 {
+  border-color: rgba(239, 68, 68, 0.25) !important;
+}
+.dark .border-red-500 {
+  border-color: rgba(239, 68, 68, 0.45) !important;
+}
+.dark .text-red-400,
+.dark .text-red-500,
+.dark .text-red-600,
+.dark .text-red-700 {
+  color: #f87171 !important;
+}
+.dark .hover\:bg-red-50:hover {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+}
+.dark .hover\:bg-red-100:hover {
+  background-color: rgba(239, 68, 68, 0.2) !important;
+}
+.dark .bg-red-600,
+.dark .hover\:bg-red-700:hover {
+  background-color: #dc2626 !important;
+}
+/* Red error info card on Step 1 — tone down */
+.dark .bg-\[\#D32F2F\] {
+  background-color: #241212 !important;
+  border: 1px solid rgba(239, 68, 68, 0.22) !important;
+}
+.dark .bg-\[\#D32F2F\] .bg-white {
+  background-color: rgba(0, 0, 0, 0.25) !important;
+  border: 1px solid rgba(255, 255, 255, 0.04) !important;
+}
+
+/* primary/5 and primary/10 backgrounds (accordion headers, info chips) */
+.dark .bg-primary\/5 {
+  background-color: rgba(63, 81, 181, 0.08) !important;
+}
+.dark .bg-primary\/10 {
+  background-color: rgba(63, 81, 181, 0.15) !important;
+}
+.dark .border-primary\/10 {
+  border-color: rgba(63, 81, 181, 0.2) !important;
+}
+.dark .border-primary\/20,
+.dark .border-primary\/30 {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+.dark .border-primary\/20:hover {
+  background-color: rgba(255, 255, 255, 0.04) !important;
+}
+
+/* Inputs */
+.dark input:not([type='checkbox']):not([type='radio']):not([type='file']),
+.dark select,
+.dark textarea {
+  background-color: #161616 !important;
+  color: #f1f5f9 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #6b7280 !important;
+}
+/* Custom select on dropdown panels — keep the option bg styled */
+.dark .bg-white > option,
+.dark select > option {
+  background-color: #161616 !important;
+  color: #f1f5f9 !important;
+}
+
+/* Switch component (knob stays white, bg-slate-200 → dark) */
+.dark .bg-slate-200.rounded-full {
+  background-color: #2a2a2a !important;
+}
+
+/* Progress bar tracks (Step 3 per-pair) */
+.dark .bg-slate-100.rounded-full {
+  background-color: #2a2a2a !important;
+}
+
+/* Step 3 circle progress track */
+.dark circle.text-slate-200 {
+  color: rgba(255, 255, 255, 0.08) !important;
+}
+.dark .text-slate-200 {
+  color: rgba(255, 255, 255, 0.15) !important;
+}
+
+/* Validation modal & startup migration loading modal — keep dark either way */
+.dark .bg-slate-900\/50,
+.dark .bg-slate-900\/70 {
+  background-color: rgba(0, 0, 0, 0.7) !important;
+}
+.dark .bg-slate-900 {
+  background-color: #0a0a0a !important;
+}
+.dark .bg-slate-800 {
+  background-color: #1a1a1a !important;
+}
+
+/* startup-card uses CSS vars; ensure border in dark mode matches surface */
+.dark .startup-card {
+  border: 1px solid rgba(255, 255, 255, 0.04) !important;
+}
+
+/* ConfirmDialog modal — backdrop already dark, ensure white card flips */
+.dark [role='dialog'] .bg-white {
+  background-color: #1a1a1a !important;
 }
