@@ -1,6 +1,8 @@
+import { eq } from 'drizzle-orm';
 import { Queue, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { env } from './env.js';
+import { db, migration } from './db.js';
 import { handleSingleMigration } from './jobs/single-migration.js';
 import { handleBulkMigration } from './jobs/bulk-migration.js';
 import { handleSyncJob } from './jobs/sync.js';
@@ -83,6 +85,25 @@ bulkWorker.on('failed', (job, err) => {
 void sweepOrphanTempfiles().then((n) => {
   if (n > 0) console.log(`[worker] swept ${n} orphan credential tempfile(s)`);
 });
+
+// Reset stale `migration.syncRunning=true` flags on boot. The sync job
+// handler sets this flag at start and clears it in success/catch paths,
+// but a SIGKILL / OOM / container restart mid-run skips the clear and the
+// row stays locked forever — POST /sync/now then returns 409 permanently
+// and Auto Sync ticks are short-circuited. Since the worker is the only
+// thing that owns this flag, on boot we KNOW no sync is genuinely running,
+// so it's safe to reset every stale `true`.
+void db
+  .update(migration)
+  .set({ syncRunning: false })
+  .where(eq(migration.syncRunning, true))
+  .then((res) => {
+    const n = (res as unknown as { rowCount?: number }).rowCount;
+    if (typeof n === 'number' && n > 0) {
+      console.log(`[worker] reset ${n} stale migration.syncRunning flag(s)`);
+    }
+  })
+  .catch((e) => console.error('[worker] syncRunning sweep failed:', e));
 
 console.log(`[worker] started (concurrency=${env.WORKER_CONCURRENCY})`);
 

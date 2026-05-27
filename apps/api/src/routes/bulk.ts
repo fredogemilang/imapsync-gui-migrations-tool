@@ -5,7 +5,8 @@ import { db } from '../db/index.js';
 import { bulkMigration, bulkPair } from '../db/schema.js';
 import { encrypt } from '../lib/crypto.js';
 import { bulkQueue } from '../lib/queue.js';
-import { redis, redisSub } from '../lib/redis.js';
+import { redis } from '../lib/redis.js';
+import { subscribeSSE } from '../lib/sse-bus.js';
 import { enqueueBulkSyncNow, reconcileBulkPairSyncs } from '../lib/bulk-sync.js';
 
 const BULK_TERMINAL = ['completed', 'completed_with_errors', 'failed', 'cancelled'] as const;
@@ -247,18 +248,17 @@ export async function bulkRoutes(app: FastifyInstance) {
         reply.raw.write(`event: snapshot\ndata: ${JSON.stringify({ ...b, pairs })}\n\n`);
       }
 
-      const channel = `bulk:${id}`;
-      const handler = (chan: string, msg: string) => {
-        if (chan === channel) reply.raw.write(`event: progress\ndata: ${msg}\n\n`);
-      };
-      await redisSub.subscribe(channel);
-      redisSub.on('message', handler);
+      // Use refcounted SSE bus so concurrent watchers (e.g. one tab on
+      // bulk progress + another on the bulk detail) don't kill each other
+      // when one disconnects.
+      const unsubscribe = await subscribeSSE(`bulk:${id}`, (msg) => {
+        reply.raw.write(`event: progress\ndata: ${msg}\n\n`);
+      });
 
       const heartbeat = setInterval(() => reply.raw.write(': ping\n\n'), 15000);
-      req.raw.on('close', async () => {
+      req.raw.on('close', () => {
         clearInterval(heartbeat);
-        redisSub.off('message', handler);
-        await redisSub.unsubscribe(channel).catch(() => {});
+        void unsubscribe();
       });
     },
   );

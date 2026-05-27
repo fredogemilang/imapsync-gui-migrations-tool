@@ -265,6 +265,16 @@ export async function handleSingleMigration(job: Job<{ migrationId: string; resu
           log(ev.level, ev.message);
         } else if (ev.kind === 'done') {
           if (ev.ok) {
+            // CRITICAL: only the DB update for `status='completed'` should be
+            // able to fail the job. If we chained applyPostMigrationSync into
+            // this same promise chain, a transient Redis hiccup at sync-schedule
+            // time would reject `done`, BullMQ would RETRY the job, and the
+            // retry's `handleSingleMigration` would unconditionally write
+            // `status='scanning'` again — clobbering the just-written
+            // 'completed' state and re-running the full migration.
+            //
+            // Side-effects (post-migration sync schedule + bell notification)
+            // therefore run with their OWN .catch and never reach rejectDone.
             void db
               .update(migration)
               .set({
@@ -275,8 +285,10 @@ export async function handleSingleMigration(job: Job<{ migrationId: string; resu
                 finishedAt: new Date(),
               })
               .where(eq(migration.id, id))
-              .then(() => applyPostMigrationSync(id, settings as Record<string, unknown>))
               .then(() => {
+                void applyPostMigrationSync(id, settings as Record<string, unknown>).catch(
+                  (e) => console.error(`[single] applyPostMigrationSync(${id}) failed:`, e),
+                );
                 void createNotification({
                   kind: 'success',
                   title: 'Migration completed',
@@ -284,8 +296,8 @@ export async function handleSingleMigration(job: Job<{ migrationId: string; resu
                   linkPath: `/migrations/${id}`,
                   migrationId: id,
                 });
+                resolveDone();
               })
-              .then(() => resolveDone())
               .catch((err) => rejectDone(err as Error));
           } else if (cancelled) {
             void db

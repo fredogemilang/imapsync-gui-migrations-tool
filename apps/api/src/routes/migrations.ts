@@ -5,7 +5,8 @@ import { db } from '../db/index.js';
 import { imapAccount, migration, migrationFolder, migrationLog } from '../db/schema.js';
 import { encrypt } from '../lib/crypto.js';
 import { migrationQueue, syncQueue, syncJobId, SYNC_INTERVALS } from '../lib/queue.js';
-import { redis, redisSub } from '../lib/redis.js';
+import { redis } from '../lib/redis.js';
+import { subscribeSSE } from '../lib/sse-bus.js';
 
 /** Terminal states — safe to delete in bulk via "Delete Finished". */
 const TERMINAL_STATUSES = ['completed', 'failed', 'cancelled'] as const;
@@ -403,19 +404,18 @@ export async function migrationRoutes(app: FastifyInstance) {
     const [m] = await db.select().from(migration).where(eq(migration.id, id)).limit(1);
     if (m) reply.raw.write(`event: snapshot\ndata: ${JSON.stringify(m)}\n\n`);
 
-    const channel = `migration:${id}`;
-    const handler = (chan: string, msg: string) => {
-      if (chan === channel) reply.raw.write(`event: progress\ndata: ${msg}\n\n`);
-    };
-    await redisSub.subscribe(channel);
-    redisSub.on('message', handler);
+    // Subscribe via the refcounted SSE bus so a multi-tab admin doesn't
+    // accidentally kill another tab's stream when one closes (see
+    // apps/api/src/lib/sse-bus.ts).
+    const unsubscribe = await subscribeSSE(`migration:${id}`, (msg) => {
+      reply.raw.write(`event: progress\ndata: ${msg}\n\n`);
+    });
 
     const heartbeat = setInterval(() => reply.raw.write(': ping\n\n'), 15000);
 
-    req.raw.on('close', async () => {
+    req.raw.on('close', () => {
       clearInterval(heartbeat);
-      redisSub.off('message', handler);
-      await redisSub.unsubscribe(channel).catch(() => {});
+      void unsubscribe();
     });
   });
 }
