@@ -6,6 +6,8 @@ import { cn } from '@/lib/utils';
 type Settings = {
   autoSync: boolean;
   backupMode: boolean;
+  /** Cadence for Backup Mode. Ignored when backupMode is false. */
+  backupInterval: 'daily' | 'weekly' | 'monthly';
   throttleEnabled: boolean;
   throttleGbPerDay: number;
   syncDuplicates: boolean;
@@ -42,6 +44,21 @@ export function SettingsPanel({
           onCheckedChange={(v) => onChange({ backupMode: v })}
           description="Permanently Sync Emails to Target Mailbox"
           tooltip="Keeps target mailbox in sync with source mailbox. Deletions in source won't delete in target."
+          right={
+            <select
+              disabled={!value.backupMode}
+              value={value.backupInterval}
+              onChange={(e) =>
+                onChange({ backupInterval: e.target.value as Settings['backupInterval'] })
+              }
+              className="bg-white border border-slate-200/80 rounded-lg text-primary text-[14px] py-2 px-3 disabled:opacity-50"
+              title="How often to back up after the initial migration"
+            >
+              <option value="daily">Every day</option>
+              <option value="weekly">Every week</option>
+              <option value="monthly">Every month</option>
+            </select>
+          }
         />
         <div className="rounded-b-xl">
           <button

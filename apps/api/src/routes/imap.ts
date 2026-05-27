@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { scanFolders, testConnection } from '../lib/imap.js';
+import { inspectAccount, scanFolders, testConnection } from '../lib/imap.js';
 
 const ImapCfg = z.object({
   host: z.string().min(1),
@@ -25,6 +25,19 @@ export async function imapRoutes(app: FastifyInstance) {
       return { ok: true, folders };
     } catch (e: any) {
       return reply.code(400).send({ ok: false, error: e?.message ?? 'Scan failed' });
+    }
+  });
+
+  // Used by Step 2 to inspect the TARGET account: existing folder/email
+  // counts + storage quota. Source uses /scan-folders which returns the
+  // per-folder list for the Details modal.
+  app.post('/api/imap/inspect', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const cfg = ImapCfg.parse(req.body);
+    try {
+      const result = await inspectAccount(cfg);
+      return { ok: true, ...result };
+    } catch (e: any) {
+      return reply.code(400).send({ ok: false, error: e?.message ?? 'Inspect failed' });
     }
   });
 }

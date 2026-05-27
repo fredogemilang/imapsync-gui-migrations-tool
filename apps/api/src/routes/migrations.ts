@@ -1,11 +1,20 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { imapAccount, migration, migrationFolder, migrationLog } from '../db/schema.js';
 import { encrypt } from '../lib/crypto.js';
-import { migrationQueue } from '../lib/queue.js';
+import { migrationQueue, syncQueue, syncJobId, SYNC_INTERVALS } from '../lib/queue.js';
 import { redis, redisSub } from '../lib/redis.js';
+
+/** Terminal states — safe to delete in bulk via "Delete Finished". */
+const TERMINAL_STATUSES = ['completed', 'failed', 'cancelled'] as const;
+
+const EnableSyncBody = z.object({
+  mode: z.enum(['auto', 'backup']),
+  /** Required for backup mode; ignored for auto (fixed 3h). */
+  interval: z.enum(['daily', 'weekly', 'monthly']).optional(),
+});
 
 const ImapAccountInput = z.object({
   label: z.string().optional(),
@@ -20,6 +29,7 @@ const ImapAccountInput = z.object({
 const Settings = z.object({
   autoSync: z.boolean().optional(),
   backupMode: z.boolean().optional(),
+  backupInterval: z.enum(['daily', 'weekly', 'monthly']).optional(),
   throttleEnabled: z.boolean().optional(),
   throttleGbPerDay: z.number().optional(),
   syncDuplicates: z.boolean().optional(),
@@ -208,6 +218,166 @@ export async function migrationRoutes(app: FastifyInstance) {
       .where(eq(migration.id, id));
     return { ok: true };
   });
+
+  // -------- Delete --------------------------------------------------------
+
+  // Delete a single migration. Tears down any active job + repeatable sync
+  // schedule, then deletes the row (cascades migration_folder + migration_log).
+  // Refuses to delete a still-running migration so the user doesn't orphan a
+  // live imapsync child — Stop first, then Delete.
+  app.delete('/api/migrations/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const id = (req.params as any).id as string;
+    const [m] = await db.select().from(migration).where(eq(migration.id, id)).limit(1);
+    if (!m) return reply.code(404).send({ error: 'Not found' });
+
+    const live = (['queued', 'scanning', 'running', 'paused'] as const).includes(
+      m.status as any,
+    );
+    if (live) {
+      return reply.code(409).send({
+        error: `Migration is ${m.status}. Stop it before deleting.`,
+      });
+    }
+
+    // Best-effort cleanup of queue artefacts. Failures here are non-fatal —
+    // the DB row delete is the source of truth.
+    if (m.jobId) {
+      const job = await migrationQueue.getJob(m.jobId).catch(() => null);
+      if (job) await job.remove().catch(() => {});
+    }
+    await syncQueue.removeJobScheduler(syncJobId(id)).catch(() => {});
+
+    await db.delete(migration).where(eq(migration.id, id));
+    return { ok: true };
+  });
+
+  // Bulk delete — only terminal-state migrations (completed/failed/cancelled).
+  // Returns the count of rows actually removed so the UI can confirm.
+  app.delete('/api/migrations', { preHandler: [app.requireAuth] }, async () => {
+    const rows = await db
+      .select({ id: migration.id, jobId: migration.jobId })
+      .from(migration)
+      .where(inArray(migration.status, TERMINAL_STATUSES as unknown as string[]));
+
+    // Cleanup queue artefacts per row (parallel, best-effort).
+    await Promise.all(
+      rows.map(async (r) => {
+        if (r.jobId) {
+          const job = await migrationQueue.getJob(r.jobId).catch(() => null);
+          if (job) await job.remove().catch(() => {});
+        }
+        await syncQueue.removeJobScheduler(syncJobId(r.id)).catch(() => {});
+      }),
+    );
+
+    if (rows.length === 0) return { ok: true, deleted: 0 };
+    await db.delete(migration).where(
+      inArray(
+        migration.id,
+        rows.map((r) => r.id),
+      ),
+    );
+    return { ok: true, deleted: rows.length };
+  });
+
+  // -------- Sync (Auto Sync / Backup Mode / Sync Now) --------------------
+
+  app.post(
+    '/api/migrations/:id/sync/enable',
+    { preHandler: [app.requireAuth] },
+    async (req, reply) => {
+      const id = (req.params as any).id as string;
+      const body = EnableSyncBody.parse(req.body);
+      const [m] = await db.select().from(migration).where(eq(migration.id, id)).limit(1);
+      if (!m) return reply.code(404).send({ error: 'Not found' });
+      if (m.status !== 'completed') {
+        return reply.code(409).send({ error: 'Sync can only be enabled on a completed migration' });
+      }
+
+      let intervalMs: number;
+      let endsAt: Date | null = null;
+      if (body.mode === 'auto') {
+        intervalMs = SYNC_INTERVALS.AUTO_SYNC_3H;
+        endsAt = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000); // 10 days
+      } else {
+        // backup mode
+        switch (body.interval) {
+          case 'weekly':
+            intervalMs = SYNC_INTERVALS.WEEKLY;
+            break;
+          case 'monthly':
+            intervalMs = SYNC_INTERVALS.MONTHLY;
+            break;
+          case 'daily':
+          default:
+            intervalMs = SYNC_INTERVALS.DAILY;
+        }
+      }
+
+      await db
+        .update(migration)
+        .set({
+          syncMode: body.mode,
+          syncIntervalMs: intervalMs,
+          syncEndsAt: endsAt,
+        })
+        .where(eq(migration.id, id));
+
+      // Replace any existing repeatable schedule for this migration.
+      await syncQueue.removeJobScheduler(syncJobId(id)).catch(() => {});
+      await syncQueue.upsertJobScheduler(
+        syncJobId(id),
+        { every: intervalMs, ...(endsAt ? { endDate: endsAt } : {}) },
+        {
+          name: 'scheduled-sync',
+          data: { migrationId: id },
+          opts: { removeOnComplete: 20, removeOnFail: 50 },
+        },
+      );
+
+      return { ok: true, intervalMs, endsAt };
+    },
+  );
+
+  app.post(
+    '/api/migrations/:id/sync/disable',
+    { preHandler: [app.requireAuth] },
+    async (req, reply) => {
+      const id = (req.params as any).id as string;
+      const [m] = await db.select().from(migration).where(eq(migration.id, id)).limit(1);
+      if (!m) return reply.code(404).send({ error: 'Not found' });
+
+      await syncQueue.removeJobScheduler(syncJobId(id)).catch(() => {});
+      await db
+        .update(migration)
+        .set({ syncMode: 'off', syncIntervalMs: null, syncEndsAt: null })
+        .where(eq(migration.id, id));
+      return { ok: true };
+    },
+  );
+
+  app.post(
+    '/api/migrations/:id/sync/now',
+    { preHandler: [app.requireAuth] },
+    async (req, reply) => {
+      const id = (req.params as any).id as string;
+      const [m] = await db.select().from(migration).where(eq(migration.id, id)).limit(1);
+      if (!m) return reply.code(404).send({ error: 'Not found' });
+      if (m.status !== 'completed') {
+        return reply.code(409).send({ error: 'Sync Now requires a completed migration' });
+      }
+      if (m.syncRunning) {
+        return reply.code(409).send({ error: 'A sync is already running' });
+      }
+      // One-off job — does NOT replace any repeatable schedule.
+      await syncQueue.add(
+        'manual-sync',
+        { migrationId: id, manual: true },
+        { removeOnComplete: 20, removeOnFail: 50 },
+      );
+      return { ok: true };
+    },
+  );
 
   app.get('/api/migrations/:id/logs', { preHandler: [app.requireAuth] }, async (req) => {
     const id = (req.params as any).id as string;
