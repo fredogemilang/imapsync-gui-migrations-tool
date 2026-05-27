@@ -1,11 +1,77 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import type { Job } from 'bullmq';
+import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import type { ChildProcess } from 'node:child_process';
 import { db, bulkMigration, bulkPair } from '../db.js';
 import { decrypt } from '../crypto.js';
 import { runImapsync, type Security } from '../imapsync.js';
+import { resolveEmailHeaderSetting } from '../app-settings.js';
+import { createNotification } from '../notifications.js';
 import { env } from '../env.js';
+
+// Constants mirrored from apps/api/src/lib/queue.ts. Kept in sync via the
+// CI cross-package check (see check:crypto-sync style — same idea would
+// apply here if drift becomes a problem).
+const AUTO_SYNC_INTERVAL = 3 * 60 * 60 * 1000;
+const AUTO_SYNC_DURATION = 10 * 24 * 60 * 60 * 1000;
+const DAILY = 24 * 60 * 60 * 1000;
+const WEEKLY = 7 * DAILY;
+const MONTHLY = 30 * DAILY;
+
+const bulkPairSyncQueue = new Queue('bulk-pair-sync', {
+  connection: new Redis({
+    host: env.REDIS_HOST,
+    port: env.REDIS_PORT,
+    maxRetriesPerRequest: null,
+  }),
+});
+
+function backupIntervalMs(interval: unknown): number {
+  if (interval === 'weekly') return WEEKLY;
+  if (interval === 'monthly') return MONTHLY;
+  return DAILY;
+}
+
+/** Worker-side equivalent of `apps/api/src/lib/bulk-sync.ts`. Schedules
+ *  repeatable sync jobs for every completed pair when bulk.settings has
+ *  autoSync or backupMode on. Called right after the bulk's initial run
+ *  finishes (or NOT — if user didn't ask for sync, this is a no-op). */
+async function applyPostBulkSync(bulkId: string): Promise<void> {
+  const [b] = await db.select().from(bulkMigration).where(eq(bulkMigration.id, bulkId));
+  if (!b) return;
+  const settings = (b.settings as Record<string, unknown> | null) ?? {};
+  const autoSync = settings.autoSync === true;
+  const backupMode = settings.backupMode === true;
+  if (!autoSync && !backupMode) return;
+
+  const intervalMs = backupMode ? backupIntervalMs(settings.backupInterval) : AUTO_SYNC_INTERVAL;
+  const endsAt = backupMode ? null : new Date(Date.now() + AUTO_SYNC_DURATION);
+  const mode = backupMode ? 'backup' : 'auto';
+
+  const completedPairs = await db
+    .select({ id: bulkPair.id })
+    .from(bulkPair)
+    .where(and(eq(bulkPair.bulkId, bulkId), eq(bulkPair.status, 'completed')));
+
+  await Promise.all(
+    completedPairs.map((p) =>
+      bulkPairSyncQueue
+        .upsertJobScheduler(
+          `bulk-pair-sync:${p.id}`,
+          { every: intervalMs, ...(endsAt ? { endDate: endsAt } : {}) },
+          {
+            name: 'bulk-pair-scheduled-sync',
+            data: { bulkId, pairId: p.id, mode },
+            opts: { removeOnComplete: 20, removeOnFail: 50 },
+          },
+        )
+        .catch((e: unknown) =>
+          console.error(`[bulk-pair-sync] schedule pair ${p.id} failed:`, e),
+        ),
+    ),
+  );
+}
 
 const pub = new Redis({ host: env.REDIS_HOST, port: env.REDIS_PORT, maxRetriesPerRequest: null });
 const cancelSub = new Redis({
@@ -66,6 +132,16 @@ export async function handleBulkMigration(job: Job<{ bulkId: string }>) {
   const queue = [...pairs];
   const active: Promise<void>[] = [];
 
+  // Bulk-level settings apply to every pair's initial imapsync run. Resolve
+  // once (the email-header policy walks app_setting which is global anyway)
+  // so we don't N-times round-trip Postgres.
+  const bulkSettings = (b.settings as Record<string, unknown> | null) ?? {};
+  const bulkThrottleBps =
+    bulkSettings.throttleEnabled === true
+      ? Math.floor((((bulkSettings.throttleGbPerDay as number) ?? 1) * 1024 ** 3) / 86400)
+      : undefined;
+  const bulkEmailHeaderSettings = await resolveEmailHeaderSetting(bulkSettings);
+
   let failedCount = 0;
   let succeededCount = 0;
   let cancelledCount = 0;
@@ -109,6 +185,11 @@ export async function handleBulkMigration(job: Job<{ bulkId: string }>) {
             password: decrypt(pair.targetPasswordEnc),
           },
           migrationId: `bulk-${id}-pair-${pair.id}`,
+          throttleBytesPerSecond: bulkThrottleBps,
+          enableCache: bulkSettings.enableCache === true,
+          reduceBandwidth: bulkSettings.reduceBandwidth === true,
+          syncDuplicates: bulkSettings.syncDuplicates === true,
+          emailHeaderSettings: bulkEmailHeaderSettings,
         },
         (ev) => {
           publish(id, { pairId: pair.id, ...ev });
@@ -215,6 +296,45 @@ export async function handleBulkMigration(job: Job<{ bulkId: string }>) {
     failed: failedCount,
     cancelled: cancelledCount,
   });
+
+  // If the user ticked Auto Sync or Backup Mode at bulk creation, arm
+  // repeatable per-pair sync schedules now that we know which pairs
+  // succeeded. Failures are logged but don't escalate — the bulk itself
+  // already finished, and the user can re-arm via PATCH settings.
+  if (finalStatus !== 'failed' && finalStatus !== 'cancelled') {
+    await applyPostBulkSync(id).catch((e) =>
+      console.error(`[bulk] applyPostBulkSync(${id}) failed:`, e),
+    );
+  }
+
+  // Emit a notification summarising the bulk outcome. Cancelled is silent
+  // (user explicitly stopped — no surprise to surface).
+  const totalPairs = pairs.length;
+  if (finalStatus === 'completed') {
+    void createNotification({
+      kind: 'success',
+      title: 'Bulk migration completed',
+      body: `${totalPairs} mailbox${totalPairs === 1 ? '' : 'es'} migrated successfully.`,
+      linkPath: `/bulk/${id}`,
+      bulkId: id,
+    });
+  } else if (finalStatus === 'completed_with_errors') {
+    void createNotification({
+      kind: 'warning',
+      title: 'Bulk migration finished with errors',
+      body: `${succeededCount}/${totalPairs} succeeded, ${failedCount} failed.`,
+      linkPath: `/bulk/${id}`,
+      bulkId: id,
+    });
+  } else if (finalStatus === 'failed') {
+    void createNotification({
+      kind: 'error',
+      title: 'Bulk migration failed',
+      body: `All ${totalPairs} mailbox${totalPairs === 1 ? '' : 'es'} failed to migrate.`,
+      linkPath: `/bulk/${id}`,
+      bulkId: id,
+    });
+  }
 
   if (finalStatus === 'failed') {
     throw new Error(`All ${pairs.length} pairs failed`);

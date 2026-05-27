@@ -1,17 +1,25 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { desc, eq } from 'drizzle-orm';
+import { desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { bulkMigration, bulkPair } from '../db/schema.js';
 import { encrypt } from '../lib/crypto.js';
 import { bulkQueue } from '../lib/queue.js';
-import { redis } from '../lib/redis.js';
+import { redis, redisSub } from '../lib/redis.js';
+import { enqueueBulkSyncNow, reconcileBulkPairSyncs } from '../lib/bulk-sync.js';
+
+const BULK_TERMINAL = ['completed', 'completed_with_errors', 'failed', 'cancelled'] as const;
 
 const Pair = z.object({
   sourceUsername: z.string().min(1),
   sourcePassword: z.string().min(1),
   targetUsername: z.string().min(1),
   targetPassword: z.string().min(1),
+  /** Captured from the per-row Sync/Backup checkboxes on the bulk page.
+   *  The worker doesn't act on these yet — they're stored for a future
+   *  enhancement that wires up post-migration auto-sync per pair. */
+  sync: z.boolean().optional().default(false),
+  backup: z.boolean().optional().default(false),
 });
 
 const CreateBulkBody = z.object({
@@ -27,7 +35,135 @@ const CreateBulkBody = z.object({
 
 export async function bulkRoutes(app: FastifyInstance) {
   app.get('/api/bulk-migrations', { preHandler: [app.requireAuth] }, async () => {
-    return db.select().from(bulkMigration).orderBy(desc(bulkMigration.createdAt));
+    const bulks = await db
+      .select()
+      .from(bulkMigration)
+      .orderBy(desc(bulkMigration.createdAt));
+
+    // Enrich each bulk row with its pair count + how many have completed
+    // so the Overview can render a "3/10 completed" hint without an N+1
+    // round-trip per row.
+    if (bulks.length === 0) return [];
+    const counts = await db
+      .select({
+        bulkId: bulkPair.bulkId,
+        total: sql<number>`count(*)::int`,
+        completed: sql<number>`sum(case when ${bulkPair.status} = 'completed' then 1 else 0 end)::int`,
+        failed: sql<number>`sum(case when ${bulkPair.status} = 'failed' then 1 else 0 end)::int`,
+      })
+      .from(bulkPair)
+      .where(
+        inArray(
+          bulkPair.bulkId,
+          bulks.map((b) => b.id),
+        ),
+      )
+      .groupBy(bulkPair.bulkId);
+    const byId = new Map(counts.map((c) => [c.bulkId, c]));
+    return bulks.map((b) => ({
+      ...b,
+      pairCount: byId.get(b.id)?.total ?? 0,
+      completedPairs: byId.get(b.id)?.completed ?? 0,
+      failedPairs: byId.get(b.id)?.failed ?? 0,
+    }));
+  });
+
+  // Patch the bulk migration's settings JSON. Used by the YourBulkMigration
+  // page to let the admin toggle Auto Sync / Backup Mode / advanced flags
+  // after the bulk has finished. Merge-style: only the supplied keys are
+  // overwritten so a partial PATCH doesn't blow away other fields.
+  const SettingsPatch = z
+    .object({
+      autoSync: z.boolean().optional(),
+      backupMode: z.boolean().optional(),
+      backupInterval: z.enum(['daily', 'weekly', 'monthly']).optional(),
+      throttleEnabled: z.boolean().optional(),
+      throttleGbPerDay: z.number().optional(),
+      syncDuplicates: z.boolean().optional(),
+      enableCache: z.boolean().optional(),
+      reduceBandwidth: z.boolean().optional(),
+      dateFilterEnabled: z.boolean().optional(),
+      dateFrom: z.string().optional(),
+      dateTo: z.string().optional(),
+    })
+    .strict();
+
+  app.patch(
+    '/api/bulk-migrations/:id/settings',
+    { preHandler: [app.requireAuth] },
+    async (req, reply) => {
+      const id = (req.params as any).id as string;
+      const patch = SettingsPatch.parse(req.body);
+      const [b] = await db.select().from(bulkMigration).where(eq(bulkMigration.id, id)).limit(1);
+      if (!b) return reply.code(404).send({ error: 'Not found' });
+      const merged = { ...(b.settings as object), ...patch };
+      await db
+        .update(bulkMigration)
+        .set({ settings: merged as any })
+        .where(eq(bulkMigration.id, id));
+      // Re-arm per-pair sync schedules to match the new settings —
+      // upserts new schedule when autoSync/backupMode is true, removes
+      // when both are false. Fire-and-forget: a failure here doesn't
+      // invalidate the settings write.
+      void reconcileBulkPairSyncs(id).catch((e) =>
+        console.error(`[bulk-sync] reconcile failed for ${id}:`, e),
+      );
+      return { ok: true, settings: merged };
+    },
+  );
+
+  // One-off "Sync Now" — enqueues a sync job for every completed pair
+  // (parallel). Returns the count so the UI can show "Syncing N mailboxes".
+  app.post(
+    '/api/bulk-migrations/:id/sync/now',
+    { preHandler: [app.requireAuth] },
+    async (req, reply) => {
+      const id = (req.params as any).id as string;
+      const [b] = await db.select().from(bulkMigration).where(eq(bulkMigration.id, id)).limit(1);
+      if (!b) return reply.code(404).send({ error: 'Not found' });
+      const count = await enqueueBulkSyncNow(id);
+      if (count === 0) {
+        return reply
+          .code(409)
+          .send({ error: 'No completed pairs to sync. Wait for the initial migration to finish.' });
+      }
+      return { ok: true, count };
+    },
+  );
+
+  // Delete a single bulk migration. Refuses while still live so we don't
+  // orphan in-flight imapsync children. Cleans up the BullMQ job before
+  // deleting the row (cascades bulk_pair via FK).
+  app.delete('/api/bulk-migrations/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const id = (req.params as any).id as string;
+    const [b] = await db.select().from(bulkMigration).where(eq(bulkMigration.id, id)).limit(1);
+    if (!b) return reply.code(404).send({ error: 'Not found' });
+
+    if (b.status === 'queued' || b.status === 'running') {
+      return reply
+        .code(409)
+        .send({ error: `Bulk migration is ${b.status}. Stop it before deleting.` });
+    }
+
+    await db.delete(bulkMigration).where(eq(bulkMigration.id, id));
+    return { ok: true };
+  });
+
+  // Bulk delete — only terminal-state bulk migrations
+  // (completed / completed_with_errors / failed / cancelled).
+  app.delete('/api/bulk-migrations', { preHandler: [app.requireAuth] }, async () => {
+    const rows = await db
+      .select({ id: bulkMigration.id })
+      .from(bulkMigration)
+      .where(inArray(bulkMigration.status, BULK_TERMINAL as unknown as string[]));
+    if (rows.length === 0) return { ok: true, deleted: 0 };
+    await db.delete(bulkMigration).where(
+      inArray(
+        bulkMigration.id,
+        rows.map((r) => r.id),
+      ),
+    );
+    return { ok: true, deleted: rows.length };
   });
 
   app.get('/api/bulk-migrations/:id', { preHandler: [app.requireAuth] }, async (req, reply) => {
@@ -62,6 +198,8 @@ export async function bulkRoutes(app: FastifyInstance) {
           sourcePasswordEnc: encrypt(p.sourcePassword),
           targetUsername: p.targetUsername,
           targetPasswordEnc: encrypt(p.targetPassword),
+          syncEnabled: p.sync,
+          backupEnabled: p.backup,
         })),
       );
     }
@@ -85,6 +223,43 @@ export async function bulkRoutes(app: FastifyInstance) {
       // worker's status writes).
       await redis.publish(`bulk-cancel:${id}`, '1');
       return { ok: true };
+    },
+  );
+
+  // Mirror of the single-migration SSE channel — streams per-pair progress
+  // and bulk-level status events to the BulkStep3 page. Initial snapshot is
+  // the full bulk row + all pair rows so the page can render immediately
+  // without a separate GET round-trip.
+  app.get(
+    '/api/bulk-migrations/:id/events',
+    { preHandler: [app.requireAuth] },
+    async (req, reply) => {
+      const id = (req.params as any).id as string;
+      reply.raw.setHeader('Content-Type', 'text/event-stream');
+      reply.raw.setHeader('Cache-Control', 'no-cache, no-transform');
+      reply.raw.setHeader('Connection', 'keep-alive');
+      reply.raw.setHeader('X-Accel-Buffering', 'no');
+      reply.raw.flushHeaders();
+
+      const [b] = await db.select().from(bulkMigration).where(eq(bulkMigration.id, id)).limit(1);
+      if (b) {
+        const pairs = await db.select().from(bulkPair).where(eq(bulkPair.bulkId, id));
+        reply.raw.write(`event: snapshot\ndata: ${JSON.stringify({ ...b, pairs })}\n\n`);
+      }
+
+      const channel = `bulk:${id}`;
+      const handler = (chan: string, msg: string) => {
+        if (chan === channel) reply.raw.write(`event: progress\ndata: ${msg}\n\n`);
+      };
+      await redisSub.subscribe(channel);
+      redisSub.on('message', handler);
+
+      const heartbeat = setInterval(() => reply.raw.write(': ping\n\n'), 15000);
+      req.raw.on('close', async () => {
+        clearInterval(heartbeat);
+        redisSub.off('message', handler);
+        await redisSub.unsubscribe(channel).catch(() => {});
+      });
     },
   );
 }
