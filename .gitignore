@@ -1,0 +1,22 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.log
+.DS_Store
+.vscode/
+.idea/
+.turbo/
+pnpm-lock.yaml.bak
+apps/*/node_modules
+apps/*/dist
+apps/*/.turbo
+data/
+imapsync-state/
+
+# playwright/manual test artefacts
+.playwright-mcp/
+*.png
+!apps/web/public/*.png
+

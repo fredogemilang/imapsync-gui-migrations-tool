@@ -1,0 +1,712 @@
+<div class="max-w-5xl mx-auto space-y-8">
+
+  <!-- Header of the Content Card Area -->
+  <div class="flex items-center justify-between">
+    <h3 class="text-[#202B8C] font-extrabold text-lg">Your Migration</h3>
+    <button onclick="refreshMigrationData()"
+      class="flex items-center gap-1.5 text-[#202B8C] hover:text-blue-700 font-semibold text-xs transition-colors cursor-pointer select-none">
+      <svg id="refresh-icon" class="h-4 w-4 stroke-[2.5]" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"
+        xmlns="http://www.w3.org/2000/svg">
+        <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+        <path d="M3 3v5h5"></path>
+      </svg>
+      Refresh Data
+    </button>
+  </div>
+
+  <!-- Cards: Original & New Accounts -->
+  <div class="flex flex-col md:flex-row items-center gap-4 md:gap-6 justify-between relative">
+    
+    <!-- Original Account Card -->
+    <div id="card-original" class="bg-white border border-slate-200/85 rounded-xl shadow-sm overflow-hidden flex-1 w-full transition-all duration-300">
+      <!-- Upper Band -->
+      <div class="bg-[#202B8C]/5 px-5 py-4 flex items-center justify-between border-b border-slate-100">
+        <div>
+          <span class="block text-[#202B8C] font-bold text-[10px] tracking-wider uppercase mb-0.5">original account</span>
+          <span class="text-primary font-bold text-[15px]">gilang@javanegra.com</span>
+        </div>
+        <div class="bg-[#E8EDF9] text-primary font-bold text-[12px] px-3 py-1.5 rounded-full shadow-sm">
+          60.79 KB
+        </div>
+      </div>
+      <!-- Lower Section -->
+      <div class="p-5 space-y-3 bg-white">
+        <div class="flex items-center text-[13px] font-semibold text-primary/80">
+          <span class="bg-emerald-500 text-white rounded-full p-0.5 mr-2 shadow-sm inline-flex items-center justify-center shrink-0">
+            <svg class="h-3.5 w-3.5 stroke-[3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </span>
+          2 emails
+        </div>
+        <div class="flex items-center text-[13px] font-semibold text-primary/80">
+          <span class="bg-emerald-500 text-white rounded-full p-0.5 mr-2 shadow-sm inline-flex items-center justify-center shrink-0">
+            <svg class="h-3.5 w-3.5 stroke-[3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </span>
+          5 folders
+          <button onclick="openDetailsModal()"
+            class="ml-3 bg-[#E2E8F0] hover:bg-slate-200 text-[#475569] font-bold text-[11px] px-2.5 py-1 rounded-full shadow-sm transition-colors cursor-pointer select-none">
+            Details
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Arrow in Circle -->
+    <div class="flex-none z-10 my-2 md:my-0">
+      <div class="flex items-center justify-center bg-white rounded-full border border-slate-200 shadow-sm p-3 w-10 h-10 select-none">
+        <svg class="h-5 w-5 text-[#202B8C]" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M14 5l7 7m0 0l-7 7m7-7H3" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+      </div>
+    </div>
+
+    <!-- New Account Card -->
+    <div id="card-new" class="bg-white border border-slate-200/85 rounded-xl shadow-sm overflow-hidden flex-1 w-full transition-all duration-300">
+      <!-- Upper Band -->
+      <div class="bg-[#202B8C]/5 px-5 py-4 border-b border-slate-100 min-h-[69px] flex flex-col justify-center">
+        <span class="block text-[#202B8C] font-bold text-[10px] tracking-wider uppercase mb-0.5">new account</span>
+        <span class="text-primary font-bold text-[15px]">gilang@javanegra.com</span>
+      </div>
+      <!-- Lower Section -->
+      <div class="p-5 space-y-3 bg-white">
+        <div class="flex items-center text-[13px] font-semibold text-primary/80">
+          <span class="bg-emerald-500 text-white rounded-full p-0.5 mr-2 shadow-sm inline-flex items-center justify-center shrink-0">
+            <svg class="h-3.5 w-3.5 stroke-[3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </span>
+          Enough disk space
+        </div>
+        <div class="flex items-center text-[13px] font-semibold text-primary/80">
+          <span class="bg-amber-500 text-white rounded-full p-0.5 mr-2 shadow-sm inline-flex items-center justify-center shrink-0">
+            <svg class="h-3.5 w-3.5 stroke-[3]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </span>
+          Account already contains <span class="font-bold ml-1">2 emails</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Settings Section -->
+  <div class="space-y-4">
+    <h3 class="text-[#202B8C] font-extrabold text-lg">Settings</h3>
+
+    <div class="border border-slate-200/80 rounded-xl bg-white shadow-sm">
+      <!-- Row 1: Auto Sync -->
+      <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 hover:bg-slate-50/30 rounded-t-xl transition-colors">
+        <div class="flex items-center space-x-6">
+          <span class="font-extrabold text-primary text-[14px] w-28">Auto Sync:</span>
+          <div onclick="handleAutoSync(this)" class="w-10 h-6 bg-slate-200 border border-slate-300/50 rounded-full relative cursor-pointer shrink-0 transition-colors shadow-inner">
+            <div class="w-4 h-4 bg-white rounded-full absolute left-1 top-1 shadow-sm"></div>
+          </div>
+          <span id="text-auto-sync" class="text-slate-400 font-semibold text-[13px] transition-colors">Synchronize Emails for 10 Days</span>
+        </div>
+        <div class="relative group cursor-pointer">
+          <div class="bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-full p-1 transition-colors">
+            <svg class="h-4 w-4 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </div>
+          <div class="absolute right-0 bottom-full mb-2 hidden group-hover:block w-64 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-lg z-20 leading-relaxed font-medium">
+            Automatically synchronize your emails periodically after the initial migration is complete.
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 2: Backup Mode -->
+      <div class="flex items-center justify-between px-5 py-4 border-b border-slate-100 hover:bg-slate-50/30 transition-colors">
+        <div class="flex items-center space-x-6">
+          <span class="font-extrabold text-primary text-[14px] w-28">Backup Mode:</span>
+          <div onclick="handleBackupMode(this)" class="w-10 h-6 bg-success rounded-full relative cursor-pointer shrink-0 transition-colors shadow-inner">
+            <div class="w-4 h-4 bg-white rounded-full absolute right-1 top-1 shadow-sm"></div>
+          </div>
+          <span id="text-backup-mode" class="text-primary font-bold text-[13px] transition-colors">Permanently Sync Emails to Target Mailbox</span>
+        </div>
+        <div class="relative group cursor-pointer">
+          <div class="bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-full p-1 transition-colors">
+            <svg class="h-4 w-4 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </div>
+          <div class="absolute right-0 bottom-full mb-2 hidden group-hover:block w-64 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-lg z-20 leading-relaxed font-medium">
+            Keeps target mailbox in sync with source mailbox. Deletions in source won't delete in target.
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 3: Advanced Settings (Expandable Accordion) -->
+      <div id="advanced-row" class="rounded-b-xl transition-colors">
+        <button onclick="toggleAdvancedSettings()" class="w-full flex items-center justify-between bg-primary/5 px-6 py-5 cursor-pointer rounded-b-xl border-t border-slate-200/60 hover:bg-primary/10 transition-colors outline-none select-none">
+          <h3 class="font-bold text-primary text-[15px]">Advanced Settings</h3>
+          <div class="bg-white rounded-full p-1 shadow-sm border border-slate-100">
+            <svg id="arrow-advanced" class="h-5 w-5 text-primary transition-transform duration-300 rotate-180" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M5 15l7-7 7 7" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </div>
+        </button>
+        
+        <!-- Accordion Body -->
+        <div id="body-advanced" class="hidden p-6 md:p-8 space-y-6 bg-white/50 rounded-b-xl border-t border-slate-200/60">
+          
+          <!-- Row 1: Throttling -->
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-6">
+            <div class="flex items-center gap-4 md:min-w-[200px]">
+              <span class="text-primary font-bold text-[15px] w-32 shrink-0">Throttling:</span>
+              <div onclick="handleThrottling(this)" class="w-10 h-6 bg-slate-200 border border-slate-300/50 rounded-full relative cursor-pointer shrink-0 transition-colors shadow-inner">
+                <div class="w-4 h-4 bg-white rounded-full absolute left-1 top-1 shadow-sm"></div>
+              </div>
+            </div>
+            <div class="flex-1 flex flex-col md:flex-row md:items-center justify-between gap-4 w-full">
+              <span id="text-throttling" class="text-slate-400 font-semibold text-[15px] transition-colors">Upload / Download Limit per Day</span>
+              <div class="flex items-center gap-4">
+                <div id="throttling-select-wrapper" class="relative w-full md:w-48 opacity-50 transition-opacity custom-dropdown-container">
+                  <button type="button" id="select-throttling" disabled onclick="toggleDropdown(this)" class="w-full bg-white border border-slate-200/80 rounded-lg text-primary text-[15px] py-2 pl-4 pr-10 appearance-none outline-none focus:border-primary/50 shadow-sm cursor-pointer disabled:cursor-not-allowed flex justify-between items-center focus:outline-none">
+                    <span id="throttling-display-val">Limit 1 GB/day</span>
+                    <svg class="dropdown-arrow h-4 w-4 text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round"></path>
+                    </svg>
+                  </button>
+                  
+                  <!-- Custom Options Dropdown -->
+                  <div class="custom-dropdown-panel hidden absolute left-0 right-0 mt-1.5 bg-white border border-slate-200/85 rounded-xl shadow-xl z-50 overflow-hidden flex flex-col">
+                    <div onclick="selectOption(this, 'Limit 1 GB/day', 'throttling-display-val')" class="px-4 py-2 hover:bg-slate-50 cursor-pointer select-none transition-colors border-b border-slate-100 last:border-0 font-bold text-[#1A237E] text-[13.5px] flex items-center justify-between gap-2">
+                      <span>Limit 1 GB/day</span>
+                      <svg class="checkmark-icon h-4 w-4 text-[#1A237E] hidden shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                        <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"></path>
+                      </svg>
+                    </div>
+                    <div onclick="selectOption(this, 'Limit 2 GB/day', 'throttling-display-val')" class="px-4 py-2 hover:bg-slate-50 cursor-pointer select-none transition-colors border-b border-slate-100 last:border-0 font-bold text-[#1A237E] text-[13.5px] flex items-center justify-between gap-2">
+                      <span>Limit 2 GB/day</span>
+                      <svg class="checkmark-icon h-4 w-4 text-[#1A237E] hidden shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                        <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"></path>
+                      </svg>
+                    </div>
+                    <div onclick="selectOption(this, 'Limit 5 GB/day', 'throttling-display-val')" class="px-4 py-2 hover:bg-slate-50 cursor-pointer select-none transition-colors border-b border-slate-100 last:border-0 font-bold text-[#1A237E] text-[13.5px] flex items-center justify-between gap-2">
+                      <span>Limit 5 GB/day</span>
+                      <svg class="checkmark-icon h-4 w-4 text-[#1A237E] hidden shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                        <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"></path>
+                      </svg>
+                    </div>
+                  </div>
+                </div>
+                <div class="relative group cursor-pointer w-6 h-6 rounded-full bg-slate-100 border border-slate-200/60 flex items-center justify-center text-slate-500 shrink-0">
+                  <span class="text-xs font-bold font-serif italic">i</span>
+                  <div class="absolute right-0 bottom-full mb-2 hidden group-hover:block w-64 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-lg z-20 leading-relaxed font-medium normal-case font-sans">
+                    Limit daily upload and download bandwidth to prevent high load on mail servers.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 2: Sync Duplicates -->
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-6">
+            <div class="flex items-center gap-4">
+              <span class="text-primary font-bold text-[15px] w-32 shrink-0">Sync Duplicates:</span>
+              <div onclick="handleMigrateDuplicates(this)" class="w-10 h-6 bg-success rounded-full relative cursor-pointer shrink-0 transition-colors shadow-inner">
+                <div class="w-4 h-4 bg-white rounded-full absolute right-1 top-1 shadow-sm"></div>
+              </div>
+              <span id="text-migrate-duplicates" class="text-primary font-bold text-[15px] hidden md:block ml-4 transition-colors">Sync Duplicates from the Existing Address</span>
+            </div>
+            <div class="flex items-center gap-4 justify-between md:justify-end">
+              <span id="text-migrate-duplicates-mobile" class="text-primary font-bold text-[15px] block md:hidden transition-colors">Sync Duplicates from the Existing Address</span>
+              <div class="relative group cursor-pointer w-6 h-6 rounded-full bg-slate-100 border border-slate-200/60 flex items-center justify-center text-slate-500 shrink-0">
+                <span class="text-xs font-bold font-serif italic">i</span>
+                <div class="absolute right-0 bottom-full mb-2 hidden group-hover:block w-64 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-lg z-20 leading-relaxed font-medium normal-case font-sans">
+                  Check and copy duplicate emails if found in the destination folder.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 3: Enable Cache -->
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-6">
+            <div class="flex items-center gap-4">
+              <span class="text-primary font-bold text-[15px] w-32 shrink-0">Enable Cache:</span>
+              <div onclick="handleEnableCache(this)" class="w-10 h-6 bg-success rounded-full relative cursor-pointer shrink-0 transition-colors shadow-inner">
+                <div class="w-4 h-4 bg-white rounded-full absolute right-1 top-1 shadow-sm"></div>
+              </div>
+              <span id="text-enable-cache" class="text-primary font-bold text-[15px] hidden md:block ml-4 transition-colors">Enable Cache for Large Mailboxes &amp; Slow Mail Servers</span>
+            </div>
+            <div class="flex items-center gap-4 justify-between md:justify-end">
+              <span id="text-enable-cache-mobile" class="text-primary font-bold text-[15px] block md:hidden transition-colors">Enable Cache for Large Mailboxes &amp; Slow Mail Servers</span>
+              <div class="relative group cursor-pointer w-6 h-6 rounded-full bg-slate-100 border border-slate-200/60 flex items-center justify-center text-slate-500 shrink-0">
+                <span class="text-xs font-bold font-serif italic">i</span>
+                <div class="absolute right-0 bottom-full mb-2 hidden group-hover:block w-64 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-lg z-20 leading-relaxed font-medium normal-case font-sans">
+                  Speeds up the migration of huge mailboxes by caching the list of messages locally.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 4: Reduce Bandwidth -->
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+              <span class="text-primary font-bold text-[15px] w-32 shrink-0">Reduce Bandwidth:</span>
+              <div onclick="handleReduceBandwidth(this)" class="w-10 h-6 bg-slate-200 border border-slate-300/50 rounded-full relative cursor-pointer shrink-0 transition-colors shadow-inner">
+                <div class="w-4 h-4 bg-white rounded-full absolute left-1 top-1 shadow-sm"></div>
+              </div>
+              <span id="text-reduce-bandwidth" class="text-slate-400 font-semibold text-[15px] hidden md:block ml-4 transition-colors">Reduce Bandwidth Consumption Between Servers</span>
+            </div>
+            <div class="flex items-center gap-4 justify-between md:justify-end">
+              <span id="text-reduce-bandwidth-mobile" class="text-slate-400 font-semibold text-[15px] block md:hidden transition-colors">Reduce Bandwidth Consumption Between Servers</span>
+              <div class="relative group cursor-pointer w-6 h-6 rounded-full bg-slate-100 border border-slate-200/60 flex items-center justify-center text-slate-500 shrink-0">
+                <span class="text-xs font-bold font-serif italic">i</span>
+                <div class="absolute right-0 bottom-full mb-2 hidden group-hover:block w-64 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-lg z-20 leading-relaxed font-medium normal-case font-sans">
+                  Reduce bandwidth consumption between source and destination mail servers.
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filter Section -->
+  <div class="space-y-4">
+    <h3 class="text-[#202B8C] font-extrabold text-lg">Filter</h3>
+
+    <div class="border border-slate-200/80 rounded-xl bg-white shadow-sm">
+      <!-- Row 1: Date Filter -->
+      <div id="date-filter-row" class="flex items-center justify-between px-5 py-4 hover:bg-slate-50/30 rounded-t-xl rounded-b-xl transition-colors">
+        <div class="flex items-center space-x-6">
+          <span class="font-extrabold text-primary text-[14px] w-28">Date Filter:</span>
+          <div onclick="handleDateFilter(this)" class="w-10 h-6 bg-slate-200 border border-slate-300/50 rounded-full relative cursor-pointer shrink-0 transition-colors shadow-inner">
+            <div class="w-4 h-4 bg-white rounded-full absolute left-1 top-1 shadow-sm"></div>
+          </div>
+          <span id="text-date-filter" class="text-slate-400 font-semibold text-[13px] transition-colors">Migrate Emails Within a Certain Date Range</span>
+        </div>
+        <div class="relative group cursor-pointer">
+          <div class="bg-slate-100 hover:bg-slate-200 text-slate-400 hover:text-slate-600 rounded-full p-1 transition-colors">
+            <svg class="h-4 w-4 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </div>
+          <div class="absolute right-0 bottom-full mb-2 hidden group-hover:block w-64 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-lg z-20 leading-relaxed font-medium">
+            Filter emails to migrate based on when they were received (e.g. only migrate emails from the last year).
+          </div>
+        </div>
+      </div>
+
+      <!-- Expandable Date Picker body -->
+      <div id="body-date-filter" class="hidden px-5 pb-5 pt-2 border-t border-slate-100/60 bg-slate-50/30 rounded-b-xl space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="bg-white border border-slate-200/80 rounded-xl p-3 shadow-sm">
+            <label class="block text-[#202B8C] font-bold text-[11px] mb-0.5">Start Date</label>
+            <input type="date" value="2026-01-01" class="w-full bg-transparent text-primary text-[13px] font-semibold outline-none border-none py-0.5" />
+          </div>
+          <div class="bg-white border border-slate-200/80 rounded-xl p-3 shadow-sm">
+            <label class="block text-[#202B8C] font-bold text-[11px] mb-0.5">End Date</label>
+            <input type="date" value="2026-05-27" class="w-full bg-transparent text-primary text-[13px] font-semibold outline-none border-none py-0.5" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Details Modal Backdrop -->
+<div id="detailsModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 opacity-0 pointer-events-none transition-all duration-300">
+  <!-- Soft Blur Overlay -->
+  <div onclick="closeDetailsModal()" class="absolute inset-0 bg-slate-900/50 backdrop-blur-md transition-opacity duration-300"></div>
+
+  <!-- Modal Card -->
+  <div class="relative w-full max-w-2xl bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden transform scale-95 opacity-0 transition-all duration-300 z-10 max-h-[85vh]">
+    <!-- Close Button (X) -->
+    <button onclick="closeDetailsModal()" class="absolute top-5 right-5 text-slate-400 hover:text-slate-600 transition-colors p-1.5 rounded-full hover:bg-slate-100 focus:outline-none">
+      <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"></path>
+      </svg>
+    </button>
+
+    <!-- Modal Body Content -->
+    <div class="p-6 md:p-8 overflow-y-auto space-y-6">
+      <h2 class="text-xl md:text-2xl font-bold text-[#202B8C] pr-8">Scanned Folders &amp; Emails</h2>
+      
+      <!-- Info Box -->
+      <div class="bg-primary/5 border border-primary/10 rounded-xl p-4 md:p-5">
+        <p class="text-primary-dark font-bold text-sm mb-1 text-[#1A237E]">The folders listed below were detected in your source account.</p>
+        <p class="text-primary/70 text-xs md:text-sm leading-relaxed text-[#202B8C]/70">This is a summary of all emails and structures found in your mailbox, ready to be migrated to the destination server.</p>
+      </div>
+
+      <!-- Folders Table -->
+      <div class="overflow-x-auto border border-slate-100 rounded-xl">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-slate-50 border-b border-slate-200 text-[#1A237E]">
+              <th class="py-3 px-4 text-left font-bold">Folder</th>
+              <th class="py-3 px-4 text-right font-bold w-32">Total Emails</th>
+              <th class="py-3 px-4 text-right font-bold w-32">Size</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 text-[#202B8C]">
+            <!-- Row: inbox -->
+            <tr class="hover:bg-slate-50/50 font-bold bg-slate-50/20">
+              <td class="py-3.5 px-4">inbox</td>
+              <td class="py-3.5 px-4 text-right text-blue-600">615</td>
+              <td class="py-3.5 px-4 text-right font-medium">132.40 MB</td>
+            </tr>
+            <!-- Row: sent items -->
+            <tr class="hover:bg-slate-50/50">
+              <td class="py-3.5 px-4 font-semibold">sent items</td>
+              <td class="py-3.5 px-4 text-right font-medium">4</td>
+              <td class="py-3.5 px-4 text-right font-medium">8.12 MB</td>
+            </tr>
+            <!-- Row: drafts -->
+            <tr class="hover:bg-slate-50/50">
+              <td class="py-3.5 px-4 font-semibold">drafts</td>
+              <td class="py-3.5 px-4 text-right font-medium">1</td>
+              <td class="py-3.5 px-4 text-right font-medium">0.05 MB</td>
+            </tr>
+            <!-- Row: junk -->
+            <tr class="hover:bg-slate-50/50">
+              <td class="py-3.5 px-4 font-semibold">junk</td>
+              <td class="py-3.5 px-4 text-right font-medium">1</td>
+              <td class="py-3.5 px-4 text-right font-medium">0.12 MB</td>
+            </tr>
+            <!-- Row: junk mail -->
+            <tr class="hover:bg-slate-50/50">
+              <td class="py-3.5 px-4 font-semibold">junk mail</td>
+              <td class="py-3.5 px-4 text-right font-medium">7</td>
+              <td class="py-3.5 px-4 text-right font-medium">5.20 MB</td>
+            </tr>
+            <!-- Row: deleted items -->
+            <tr class="hover:bg-slate-50/50 text-slate-400">
+              <td class="py-3.5 px-4 font-semibold italic text-slate-400">deleted items</td>
+              <td class="py-3.5 px-4 text-right font-medium">0</td>
+              <td class="py-3.5 px-4 text-right font-medium italic text-slate-400">0.00 MB</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- OK Button at the bottom -->
+    <button onclick="closeDetailsModal()" class="w-full bg-[#1A237E] hover:bg-[#202B8C] py-4 font-bold text-base transition-colors duration-200 select-none text-white outline-none">
+      OK
+    </button>
+  </div>
+</div>
+
+<!-- Starting Migration Loading Backdrop -->
+<div id="startingMigrationModal"
+  class="fixed inset-0 z-[100] flex items-center justify-center p-4 opacity-0 pointer-events-none transition-all duration-300">
+  <div class="absolute inset-0 bg-slate-900/50 backdrop-blur-md transition-opacity duration-300"></div>
+
+  <!-- Modal Card (Deep Blue) -->
+  <div class="relative w-full max-w-md bg-[#1c288f] text-white rounded-3xl shadow-2xl flex flex-col items-center justify-center p-8 md:p-10 transform scale-95 opacity-0 transition-all duration-300 z-10">
+    <!-- iOS Spinner SVG -->
+    <svg class="animate-spin h-12 w-12 text-white/90 mb-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <line x1="12" y1="2" x2="12" y2="6" stroke-linecap="round" />
+      <line x1="12" y1="18" x2="12" y2="22" stroke-linecap="round" opacity="0.2" />
+      <line x1="4.93" y1="4.93" x2="7.76" y2="7.76" stroke-linecap="round" opacity="0.8" />
+      <line x1="16.24" y1="16.24" x2="19.07" y2="19.07" stroke-linecap="round" opacity="0.2" />
+      <line x1="2" y1="12" x2="6" y2="12" stroke-linecap="round" opacity="0.5" />
+      <line x1="18" y1="12" x2="22" y2="12" stroke-linecap="round" opacity="0.2" />
+      <line x1="4.93" y1="19.07" x2="7.76" y2="16.24" stroke-linecap="round" opacity="0.2" />
+      <line x1="16.24" y1="7.76" x2="19.07" y2="4.93" stroke-linecap="round" opacity="0.2" />
+    </svg>
+
+    <div class="w-full text-center space-y-4">
+      <h3 class="font-bold text-lg md:text-xl tracking-wide">Starting email migration...</h3>
+      <p class="text-white/70 text-xs font-semibold">Initializing secure transfer channels</p>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Details Modal Functions
+  function openDetailsModal() {
+    const modal = document.getElementById('detailsModal');
+    const card = modal.querySelector('.transform');
+    
+    modal.classList.remove('pointer-events-none', 'opacity-0');
+    modal.classList.add('opacity-100');
+    card.classList.remove('scale-95', 'opacity-0');
+    card.classList.add('scale-100', 'opacity-100');
+    
+    document.body.classList.add('overflow-hidden');
+  }
+
+  function closeDetailsModal() {
+    const modal = document.getElementById('detailsModal');
+    const card = modal.querySelector('.transform');
+    
+    card.classList.remove('scale-100', 'opacity-100');
+    card.classList.add('scale-95', 'opacity-0');
+    modal.classList.remove('opacity-100');
+    modal.classList.add('opacity-0', 'pointer-events-none');
+    
+    document.body.classList.remove('overflow-hidden');
+  }
+
+  // Toggles Functionality using custom switcher divs consistent with your-migration.html
+  function toggleSwitcher(el) {
+    const knob = el.querySelector('div');
+    const isON = el.classList.contains('bg-success');
+    if (isON) {
+      // Turn OFF
+      el.classList.remove('bg-success');
+      el.classList.add('bg-slate-200', 'border', 'border-slate-300/50');
+      knob.classList.remove('right-1');
+      knob.classList.add('left-1');
+    } else {
+      // Turn ON
+      el.classList.remove('bg-slate-200', 'border', 'border-slate-300/50');
+      el.classList.add('bg-success');
+      knob.classList.remove('left-1');
+      knob.classList.add('right-1');
+    }
+    return !isON; // returns the new state (true if ON, false if OFF)
+  }
+
+  function handleAutoSync(el) {
+    const state = toggleSwitcher(el);
+    const textSpan = document.getElementById('text-auto-sync');
+    if (state) {
+      textSpan.classList.remove('text-slate-400');
+      textSpan.classList.add('text-primary', 'font-bold');
+    } else {
+      textSpan.classList.remove('text-primary', 'font-bold');
+      textSpan.classList.add('text-slate-400');
+    }
+  }
+
+  function handleBackupMode(el) {
+    const state = toggleSwitcher(el);
+    const textSpan = document.getElementById('text-backup-mode');
+    if (state) {
+      textSpan.classList.remove('text-slate-400');
+      textSpan.classList.add('text-primary', 'font-bold');
+    } else {
+      textSpan.classList.remove('text-primary', 'font-bold');
+      textSpan.classList.add('text-slate-400');
+    }
+  }
+
+  function handleDateFilter(el) {
+    const state = toggleSwitcher(el);
+    const textSpan = document.getElementById('text-date-filter');
+    const pickerBody = document.getElementById('body-date-filter');
+    const dateRow = document.getElementById('date-filter-row');
+    if (state) {
+      textSpan.classList.remove('text-slate-400');
+      textSpan.classList.add('text-primary', 'font-bold');
+      pickerBody.classList.remove('hidden');
+      dateRow.classList.remove('rounded-b-xl');
+    } else {
+      textSpan.classList.remove('text-primary', 'font-bold');
+      textSpan.classList.add('text-slate-400');
+      pickerBody.classList.add('hidden');
+      dateRow.classList.add('rounded-b-xl');
+    }
+  }
+
+  function handleThrottling(el) {
+    const state = toggleSwitcher(el);
+    const textSpan = document.getElementById('text-throttling');
+    const selectWrapper = document.getElementById('throttling-select-wrapper');
+    const selectElem = document.getElementById('select-throttling');
+    if (state) {
+      textSpan.className = "text-primary font-bold text-[15px] transition-colors";
+      selectWrapper.classList.remove('opacity-50');
+      selectElem.removeAttribute('disabled');
+    } else {
+      textSpan.className = "text-slate-400 font-semibold text-[15px] transition-colors";
+      selectWrapper.classList.add('opacity-50');
+      selectElem.setAttribute('disabled', 'true');
+    }
+  }
+
+  function handleMigrateDuplicates(el) {
+    const state = toggleSwitcher(el);
+    const textSpan = document.getElementById('text-migrate-duplicates');
+    const textSpanMobile = document.getElementById('text-migrate-duplicates-mobile');
+    if (state) {
+      textSpan.className = "text-primary font-bold text-[15px] hidden md:block ml-4 transition-colors";
+      if (textSpanMobile) textSpanMobile.className = "text-primary font-bold text-[15px] block md:hidden transition-colors";
+    } else {
+      textSpan.className = "text-slate-400 font-semibold text-[15px] hidden md:block ml-4 transition-colors";
+      if (textSpanMobile) textSpanMobile.className = "text-slate-400 font-semibold text-[15px] block md:hidden transition-colors";
+    }
+  }
+
+  function handleEnableCache(el) {
+    const state = toggleSwitcher(el);
+    const textSpan = document.getElementById('text-enable-cache');
+    const textSpanMobile = document.getElementById('text-enable-cache-mobile');
+    if (state) {
+      textSpan.className = "text-primary font-bold text-[15px] hidden md:block ml-4 transition-colors";
+      if (textSpanMobile) textSpanMobile.className = "text-primary font-bold text-[15px] block md:hidden transition-colors";
+    } else {
+      textSpan.className = "text-slate-400 font-semibold text-[15px] hidden md:block ml-4 transition-colors";
+      if (textSpanMobile) textSpanMobile.className = "text-slate-400 font-semibold text-[15px] block md:hidden transition-colors";
+    }
+  }
+
+  function handleReduceBandwidth(el) {
+    const state = toggleSwitcher(el);
+    const textSpan = document.getElementById('text-reduce-bandwidth');
+    const textSpanMobile = document.getElementById('text-reduce-bandwidth-mobile');
+    if (state) {
+      textSpan.className = "text-primary font-bold text-[15px] hidden md:block ml-4 transition-colors";
+      if (textSpanMobile) textSpanMobile.className = "text-primary font-bold text-[15px] block md:hidden transition-colors";
+    } else {
+      textSpan.className = "text-slate-400 font-semibold text-[15px] hidden md:block ml-4 transition-colors";
+      if (textSpanMobile) textSpanMobile.className = "text-slate-400 font-semibold text-[15px] block md:hidden transition-colors";
+    }
+  }
+
+  // Accordion Functionality consistent with your-migration.html
+  function toggleAdvancedSettings() {
+    const body = document.getElementById('body-advanced');
+    const arrow = document.getElementById('arrow-advanced');
+    const advRow = document.getElementById('advanced-row');
+    const advBtn = advRow.querySelector('button');
+
+    if (body.classList.contains('hidden')) {
+      body.classList.remove('hidden');
+      arrow.classList.remove('rotate-180');
+      advRow.classList.remove('rounded-b-xl');
+      advBtn.classList.remove('rounded-b-xl');
+    } else {
+      body.classList.add('hidden');
+      arrow.classList.add('rotate-180');
+      advRow.classList.add('rounded-b-xl');
+      advBtn.classList.add('rounded-b-xl');
+    }
+  }
+
+  // Refresh Mock Data
+  function refreshMigrationData() {
+    const icon = document.getElementById('refresh-icon');
+    const cardOrig = document.getElementById('card-original');
+    const cardNew = document.getElementById('card-new');
+
+    // Add spin to refresh icon
+    icon.classList.add('animate-spin');
+
+    // Fade cards slightly to simulate load
+    cardOrig.classList.add('opacity-50', 'scale-[0.99]');
+    cardNew.classList.add('opacity-50', 'scale-[0.99]');
+
+    setTimeout(() => {
+      icon.classList.remove('animate-spin');
+      cardOrig.classList.remove('opacity-50', 'scale-[0.99]');
+      cardNew.classList.remove('opacity-50', 'scale-[0.99]');
+    }, 1500);
+  }
+
+  // Start Migration Simulation
+  function startMigration() {
+    const modal = document.getElementById('startingMigrationModal');
+    const card = modal.querySelector('.transform');
+
+    modal.classList.remove('pointer-events-none', 'opacity-0');
+    modal.classList.add('opacity-100');
+    card.classList.remove('scale-95', 'opacity-0');
+    card.classList.add('scale-100', 'opacity-100');
+
+    document.body.classList.add('overflow-hidden');
+
+    setTimeout(() => {
+      // Redirect to migrations-step3.html which contains the step 3 progress tracking mockup
+      window.location.href = 'migrations-step3.html';
+    }, 2000);
+  }
+
+  function updateSelectedDropdownStyles(container) {
+    const panel = container.querySelector('.custom-dropdown-panel');
+    if (!panel) return;
+    const trigger = container.querySelector('button');
+    if (!trigger) return;
+    
+    const valEl = trigger.querySelector('[id*="-val"]') || trigger.querySelector('span');
+    if (!valEl) return;
+    const activeText = valEl.textContent.trim().toLowerCase();
+    
+    const options = panel.children;
+    for (let opt of options) {
+      let optText = "";
+      const spanInside = opt.querySelector('span');
+      if (spanInside) {
+        optText = spanInside.textContent.trim().toLowerCase();
+      } else {
+        optText = opt.textContent.trim().toLowerCase();
+      }
+      
+      const isSelected = activeText.includes(optText) || optText.includes(activeText);
+      const checkmark = opt.querySelector('.checkmark-icon');
+      
+      if (isSelected) {
+        opt.classList.add('bg-slate-100/70');
+        if (checkmark) checkmark.classList.remove('hidden');
+      } else {
+        opt.classList.remove('bg-slate-100/70');
+        if (checkmark) checkmark.classList.add('hidden');
+      }
+    }
+  }
+
+  function toggleDropdown(button) {
+    if (button.hasAttribute('disabled') || button.disabled) return;
+    const container = button.closest('.custom-dropdown-container');
+    const panel = container.querySelector('.custom-dropdown-panel');
+    const arrow = container.querySelector('.dropdown-arrow');
+    
+    document.querySelectorAll('.custom-dropdown-panel').forEach(p => {
+      if (p !== panel) {
+        p.classList.add('hidden');
+        const otherArrow = p.closest('.custom-dropdown-container').querySelector('.dropdown-arrow');
+        if (otherArrow) otherArrow.classList.remove('rotate-180');
+      }
+    });
+
+    const isHidden = panel.classList.contains('hidden');
+    if (isHidden) {
+      updateSelectedDropdownStyles(container);
+      panel.classList.remove('hidden');
+      if (arrow) arrow.classList.add('rotate-180');
+    } else {
+      panel.classList.add('hidden');
+      if (arrow) arrow.classList.remove('rotate-180');
+    }
+  }
+
+  function selectOption(optionEl, value, displayId) {
+    document.getElementById(displayId).textContent = value;
+    
+    const container = optionEl.closest('.custom-dropdown-container');
+    container.querySelector('.custom-dropdown-panel').classList.add('hidden');
+    container.querySelector('.dropdown-arrow').classList.remove('rotate-180');
+    
+    updateSelectedDropdownStyles(container);
+  }
+
+  document.addEventListener('click', (e) => {
+    const openPanels = document.querySelectorAll('.custom-dropdown-panel:not(.hidden)');
+    openPanels.forEach(panel => {
+      const container = panel.closest('.custom-dropdown-container');
+      if (container && !container.contains(e.target)) {
+        panel.classList.add('hidden');
+        const arrow = container.querySelector('.dropdown-arrow');
+        if (arrow) arrow.classList.remove('rotate-180');
+      }
+    });
+  });
+
+  // Initialize selected item styles on load
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.custom-dropdown-container').forEach(container => {
+      updateSelectedDropdownStyles(container);
+    });
+  });
+</script>

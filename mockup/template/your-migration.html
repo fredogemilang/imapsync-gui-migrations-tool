@@ -1,0 +1,26 @@
+{{#> layouts/base title="Your Migration - Email Migration Dashboard"}}
+
+{{> header-back }}
+
+<!-- Main Layout container -->
+<div class="flex flex-1 overflow-hidden pb-[88px]">
+
+  {{> sidebar-migration }}
+
+  <!-- Main Content Area -->
+  <main class="flex-1 flex flex-col relative overflow-hidden" data-purpose="main-content">
+    <div class="flex-1 overflow-y-auto mb-24 p-4 md:p-8 lg:p-10">
+
+      {{> migration-report-content }}
+
+    </div>
+
+    {{> footer-action-back }}
+
+  </main>
+
+</div>
+
+{{> bottom-nav }}
+
+{{/layouts/base}}

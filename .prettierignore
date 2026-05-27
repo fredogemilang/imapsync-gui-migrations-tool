@@ -1,0 +1,10 @@
+node_modules
+dist
+build
+.turbo
+.vite
+mockup
+apps/api/drizzle
+.playwright-mcp
+pnpm-lock.yaml
+*.log

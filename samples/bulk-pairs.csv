@@ -1,0 +1,3 @@
+# source_username,source_password,target_username,target_password
+user1@source.com,sourcepwd1,user1@target.com,targetpwd1
+user2@source.com,sourcepwd2,user2@target.com,targetpwd2

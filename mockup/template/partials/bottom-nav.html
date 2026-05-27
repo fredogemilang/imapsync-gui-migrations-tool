@@ -1,0 +1,123 @@
+<!-- Bottom Navigation -->
+<nav
+  class="absolute bottom-0 inset-x-0 bg-white border-t border-slate-200/80 px-6 py-3 flex justify-center z-[60] shadow-[0_-4px_20px_-10px_rgba(0,0,0,0.05)]"
+  data-purpose="bottom-nav">
+  <ul class="flex w-full max-w-4xl justify-around items-center">
+    <!-- Nav Item 1: Overview -->
+    <li>
+      <a class="flex flex-col items-center justify-center w-24 space-y-1 text-primary hover:text-blue-600 transition-colors group" href="overview.html">
+        <div class="p-2 rounded-xl group-hover:bg-slate-50 transition-colors">
+          <svg class="h-7 w-7 icon-stroke" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+              stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+        </div>
+        <span class="text-[11px] font-medium tracking-wide">Overview</span>
+      </a>
+    </li>
+    <!-- Nav Item 2: Migrations -->
+    <li>
+      <a class="flex flex-col items-center justify-center w-24 space-y-1 text-primary hover:text-blue-600 transition-colors group"
+        href="migrations.html">
+        <div class="p-2 rounded-xl group-hover:bg-slate-50 transition-colors">
+          <svg class="h-7 w-7 icon-stroke" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+              stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+        </div>
+        <span class="text-[11px] font-medium tracking-wide">Migrations</span>
+      </a>
+    </li>
+    <!-- Nav Item 3: Bulk Migration -->
+    <li>
+      <a class="flex flex-col items-center justify-center w-24 space-y-1 text-primary hover:text-blue-600 transition-colors group"
+        href="bulk-migrations.html">
+        <div class="p-2 rounded-xl group-hover:bg-slate-50 transition-colors">
+          <svg class="h-7 w-7 icon-stroke" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+              stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+        </div>
+        <span class="text-[11px] font-medium tracking-wide">Bulk Migration</span>
+      </a>
+    </li>
+    <!-- Nav Item 4: Settings -->
+    <li>
+      <a class="flex flex-col items-center justify-center w-24 space-y-1 text-primary hover:text-blue-600 transition-colors group"
+        href="settings.html">
+        <div class="p-2 rounded-xl group-hover:bg-slate-50 transition-colors">
+          <svg class="h-7 w-7 icon-stroke" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg">
+            <path
+              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              stroke-linecap="round" stroke-linejoin="round"></path>
+            <path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+        </div>
+        <span class="text-[11px] font-medium tracking-wide">Settings</span>
+      </a>
+    </li>
+  </ul>
+</nav>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const path = window.location.pathname;
+    const navLinks = document.querySelectorAll('[data-purpose="bottom-nav"] a');
+    
+    navLinks.forEach(link => {
+      const href = link.getAttribute('href');
+      const filename = path.substring(path.lastIndexOf('/') + 1) || 'index.html';
+      
+      const isBulkPage = filename.startsWith('bulk-migrations');
+      const isSettingsPage = filename === 'settings.html';
+      const isMigrationsPage = !isBulkPage && !isSettingsPage && (
+        filename === 'migrations.html' || 
+        filename === 'your-migration.html' || 
+        filename === 'migrations-step2.html' || 
+        filename === 'migrations-step3.html'
+      );
+      
+      const isMatch = href && (
+        (href === 'migrations.html' && isMigrationsPage) ||
+        (href === 'bulk-migrations.html' && isBulkPage) ||
+        (href === 'settings.html' && isSettingsPage) ||
+        (href === 'overview.html' && !isMigrationsPage && !isBulkPage && !isSettingsPage && (filename === 'overview.html' || filename === 'index.html'))
+      );
+
+      if (isMatch) {
+        link.classList.remove('text-primary');
+        link.classList.add('text-blue-500');
+        const iconContainer = link.querySelector('div');
+        if (iconContainer) {
+          iconContainer.classList.remove('group-hover:bg-slate-50');
+          iconContainer.classList.add('bg-blue-50');
+        }
+        const spanText = link.querySelector('span');
+        if (spanText) {
+          spanText.classList.remove('font-medium');
+          spanText.classList.add('font-semibold');
+        }
+      } else {
+        link.classList.remove('text-blue-500');
+        link.classList.add('text-primary');
+        const iconContainer = link.querySelector('div');
+        if (iconContainer) {
+          iconContainer.classList.remove('bg-blue-50');
+          iconContainer.classList.add('group-hover:bg-slate-50');
+        }
+        const spanText = link.querySelector('span');
+        if (spanText) {
+          spanText.classList.remove('font-semibold');
+          spanText.classList.add('font-medium');
+        }
+      }
+    });
+  });
+</script>

@@ -1,0 +1,63 @@
+@import 'tailwindcss';
+
+:root {
+  --font-sans: 'Inter', sans-serif;
+  --bg-start: #e7f2fd;
+  --bg-end: #f7f3fc;
+  --primary: #202b8c;
+  --primary-dark: #1a237e;
+  --primary-container: #263299;
+  --surf: #ffffff;
+}
+
+@theme {
+  --font-sans: 'Inter', sans-serif;
+  --color-primary: var(--primary);
+  --color-primary-dark: var(--primary-dark);
+  --color-primary-container: var(--primary-container);
+  --color-on-primary: #ffffff;
+  --color-success: #10b981;
+  --color-success-container: #ecfdf5;
+  --color-background-start: var(--bg-start);
+  --color-background-end: var(--bg-end);
+  --color-surface: var(--surf);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  background: linear-gradient(
+    135deg,
+    var(--color-background-start) 0%,
+    var(--color-background-end) 100%
+  );
+  background-attachment: fixed;
+  color: #1e293b;
+}
+
+.startup-card {
+  background: var(--color-surface);
+  box-shadow:
+    0 10px 25px -5px rgba(0, 0, 0, 0.05),
+    0 8px 10px -6px rgba(0, 0, 0, 0.01);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+}
+
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: rgba(32, 43, 140, 0.25);
+  border-radius: 9999px;
+}

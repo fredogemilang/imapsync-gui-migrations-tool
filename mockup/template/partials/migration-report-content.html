@@ -1,0 +1,516 @@
+<!-- Your Migration: Page Content -->
+<div class="max-w-5xl mx-auto space-y-8">
+
+  <!-- Mobile Title (Hidden on desktop as it's in the sidebar) -->
+  <div class="md:hidden px-2 mb-2">
+    <h2 class="text-2xl font-bold text-primary-dark">Your Migration:</h2>
+  </div>
+
+  <!-- Initial Migration Section -->
+  <div class="space-y-4">
+    <h3 class="text-[#202B8C] font-extrabold text-lg">Initial Migration:</h3>
+
+    <!-- Card 1: Initial Migration -->
+    <div class="border border-slate-200/80 rounded-xl bg-white shadow-sm overflow-hidden">
+      <!-- Card Body -->
+      <div class="p-6 md:p-8 flex flex-col lg:flex-row gap-8">
+      <!-- Left Column: Details Grid -->
+      <div class="flex-1 space-y-5">
+        <!-- Row: From -->
+        <div class="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
+          <span class="text-primary font-bold text-sm w-32 shrink-0">From:</span>
+          <div class="text-sm min-w-0">
+            <div class="text-slate-500 mb-0.5 truncate">mx.kerjamail.co</div>
+            <div class="text-primary font-medium truncate">retail@javanegra.com</div>
+          </div>
+        </div>
+        <!-- Row: Emails -->
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
+          <span class="text-primary font-bold text-sm w-32 shrink-0">Emails:</span>
+          <div class="text-primary font-medium text-sm">628</div>
+        </div>
+        <!-- Row: Folders -->
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
+          <span class="text-primary font-bold text-sm w-32 shrink-0">Folders:</span>
+          <div class="text-primary font-medium text-sm">6</div>
+        </div>
+        <!-- Row: To -->
+        <div class="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
+          <span class="text-primary font-bold text-sm w-32 shrink-0">To:</span>
+          <div class="text-sm min-w-0">
+            <div class="text-slate-500 mb-0.5 truncate">mail.javanegra.com</div>
+            <div class="text-primary font-medium truncate">retail@javanegra.com</div>
+          </div>
+        </div>
+        <!-- Row: Migration finished -->
+        <div class="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 pt-2">
+          <span class="text-primary font-bold text-sm w-40 shrink-0">Migration finished:</span>
+          <div class="text-primary font-medium text-sm">05/27/2026, 10:44 AM</div>
+        </div>
+      </div>
+
+      <!-- Right Column: Stats & Actions -->
+      <div class="flex-1 flex flex-col justify-between lg:pl-10 lg:border-l border-slate-100">
+        <div class="space-y-4">
+          <!-- Stat 1 -->
+          <div class="flex items-center gap-3">
+            <div class="bg-emerald-500 rounded-full p-0.5 flex items-center justify-center shrink-0">
+              <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </div>
+            <div class="text-[15px] text-primary"><span class="font-bold">628</span> emails migrated</div>
+          </div>
+          <!-- Stat 2 -->
+          <div class="flex items-center gap-3">
+            <div class="bg-emerald-500 rounded-full p-0.5 flex items-center justify-center shrink-0">
+              <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </div>
+            <div class="text-[15px] text-primary"><span class="font-bold">5</span> folders checked</div>
+          </div>
+          <!-- Stat 3 -->
+          <div class="flex items-center gap-3">
+            <div class="bg-emerald-500 rounded-full p-0.5 flex items-center justify-center shrink-0">
+              <svg class="h-4 w-4 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            </div>
+            <div class="text-[15px] text-primary"><span class="font-bold">139.13 MB</span> migrated</div>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex flex-wrap items-center gap-3 mt-8 lg:mt-0 justify-start lg:justify-end">
+          <button class="flex items-center gap-2 px-4 py-2 border border-primary/30 text-primary font-semibold text-sm rounded-lg hover:bg-primary/5 transition-colors shadow-sm">
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            Download Log Files
+          </button>
+          <button onclick="openDetailsModal()" class="flex items-center gap-2 px-4 py-2 border border-primary/30 text-primary font-semibold text-sm rounded-lg hover:bg-primary/5 transition-colors shadow-sm">
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            Details
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- Options Section -->
+  <div class="space-y-4">
+    <h3 class="text-[#202B8C] font-extrabold text-lg">Options:</h3>
+
+    <!-- Card 2: Options -->
+    <div class="border border-slate-200/80 rounded-xl bg-white shadow-sm overflow-hidden">
+      <div class="p-6 md:p-8 space-y-6">
+      <!-- Segmented Control -->
+      <div class="flex bg-slate-100/80 p-1 rounded-xl border border-slate-200/50">
+        <button id="btnAutoSync" onclick="setSyncMode('auto')" class="flex-1 bg-white shadow-sm rounded-lg py-2.5 text-primary font-bold text-sm border border-slate-100 transition-all">Auto Sync</button>
+        <button id="btnBackupMode" onclick="setSyncMode('backup')" class="flex-1 py-2.5 text-slate-500 font-semibold text-sm hover:text-primary transition-colors transition-all">Backup Mode</button>
+      </div>
+
+      <!-- Toggle Row Enabled -->
+      <div class="flex items-center justify-between border-b border-slate-100 pb-6">
+        <div class="flex items-center gap-4">
+          <!-- Toggle ON/Active -->
+          <div onclick="toggleSwitcher(this)" class="w-10 h-6 bg-success rounded-full relative cursor-pointer shrink-0 transition-colors shadow-inner">
+            <div class="w-4 h-4 bg-white rounded-full absolute right-1 top-1 shadow-sm"></div>
+          </div>
+          <span id="syncModeText" class="text-primary font-medium text-[15px]">Automatically synchronize emails for 10 days</span>
+        </div>
+        <div class="w-6 h-6 rounded-full bg-slate-100 border border-slate-200/60 flex items-center justify-center text-slate-500 shrink-0">
+          <span class="text-xs font-bold font-serif italic">i</span>
+        </div>
+      </div>
+
+      <!-- Sync Now Button (Enabled) -->
+      <button class="w-full bg-primary-container hover:bg-primary-dark text-white rounded-xl py-3.5 flex items-center justify-center font-bold text-[15px] shadow-sm cursor-pointer transition-colors duration-200">
+        <svg class="h-5 w-5 mr-2" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke-linecap="round" stroke-linejoin="round"></path>
+        </svg>
+        Sync Now
+      </button>
+    </div>
+
+    <!-- Accordion Header inside Card 2 (Options) -->
+    <button class="w-full text-left bg-primary/5 px-6 py-5 border-t border-b border-slate-200/60 flex items-center justify-between hover:bg-primary/10 transition-colors" onclick="toggleAdvancedSettings()">
+      <h3 class="font-bold text-primary text-[15px]">Advanced Settings</h3>
+      <div class="bg-white rounded-full p-1 shadow-sm border border-slate-100">
+        <svg id="advancedSettingsIcon" class="h-5 w-5 text-primary transition-transform duration-300 rotate-180" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M5 15l7-7 7 7" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      </div>
+    </button>
+
+    <!-- Accordion Body inside Card 2 (Options) -->
+    <div id="advancedSettingsBody" class="hidden p-6 md:p-8 space-y-6 bg-white/50">
+
+      <!-- Row 1: Throttling -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-6">
+        <div class="flex items-center gap-4 md:min-w-[200px]">
+          <span class="text-primary font-bold text-[15px] w-32 shrink-0">Throttling:</span>
+          <!-- Toggle ON/Active -->
+          <div onclick="handleThrottling(this)" class="w-10 h-6 bg-success rounded-full relative cursor-pointer shrink-0 transition-colors shadow-inner">
+            <div class="w-4 h-4 bg-white rounded-full absolute right-1 top-1 shadow-sm"></div>
+          </div>
+        </div>
+        <div class="flex-1 flex flex-col md:flex-row md:items-center justify-between gap-4 w-full">
+          <span id="text-throttling" class="text-primary font-medium text-[15px] transition-colors">Upload / Download Limit per Day</span>
+          <div class="flex items-center gap-4">
+            <div id="throttling-select-wrapper" class="relative w-full md:w-48 transition-opacity custom-dropdown-container">
+              <button type="button" id="select-throttling" onclick="toggleDropdown(this)" class="w-full bg-white border border-slate-200/80 rounded-lg text-primary text-[15px] py-2 pl-4 pr-10 appearance-none outline-none focus:border-primary/50 shadow-sm cursor-pointer flex justify-between items-center focus:outline-none">
+                <span id="throttling-display-val">Limit 1 GB/day</span>
+                <svg class="dropdown-arrow h-4 w-4 text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M19 9l-7 7-7-7" stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg>
+              </button>
+              
+              <!-- Custom Options Dropdown -->
+              <div class="custom-dropdown-panel hidden absolute left-0 right-0 mt-1.5 bg-white border border-slate-200/85 rounded-xl shadow-xl z-50 overflow-hidden flex flex-col">
+                <div onclick="selectOption(this, 'Limit 1 GB/day', 'throttling-display-val')" class="px-4 py-2 hover:bg-slate-50 cursor-pointer select-none transition-colors border-b border-slate-100 last:border-0 font-bold text-[#1A237E] text-[13.5px] flex items-center justify-between gap-2">
+                  <span>Limit 1 GB/day</span>
+                  <svg class="checkmark-icon h-4 w-4 text-[#1A237E] hidden shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                    <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"></path>
+                  </svg>
+                </div>
+                <div onclick="selectOption(this, 'Limit 2 GB/day', 'throttling-display-val')" class="px-4 py-2 hover:bg-slate-50 cursor-pointer select-none transition-colors border-b border-slate-100 last:border-0 font-bold text-[#1A237E] text-[13.5px] flex items-center justify-between gap-2">
+                  <span>Limit 2 GB/day</span>
+                  <svg class="checkmark-icon h-4 w-4 text-[#1A237E] hidden shrink-0" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                    <path d="M5 13l4 4L19 7" stroke-linecap="round" stroke-linejoin="round"></path>
+                  </svg>
+                </div>
+              </div>
+            </div>
+            <div class="w-6 h-6 rounded-full bg-slate-100 border border-slate-200/60 flex items-center justify-center text-slate-500 shrink-0">
+              <span class="text-xs font-bold font-serif italic">i</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 2: Sync Duplicates -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-6">
+        <div class="flex items-center gap-4">
+          <span class="text-primary font-bold text-[15px] w-32 shrink-0">Sync Duplicates:</span>
+          <!-- Toggle ON/Active -->
+          <div onclick="toggleSwitcher(this)" class="w-10 h-6 bg-success rounded-full relative cursor-pointer shrink-0 transition-colors shadow-inner">
+            <div class="w-4 h-4 bg-white rounded-full absolute right-1 top-1 shadow-sm"></div>
+          </div>
+          <span class="text-primary font-medium text-[15px] hidden md:block ml-4">Sync Duplicates from the Existing Address</span>
+        </div>
+        <div class="flex items-center gap-4 justify-between md:justify-end">
+          <span class="text-primary font-medium text-[15px] block md:hidden">Sync Duplicates from the Existing Address</span>
+          <div class="w-6 h-6 rounded-full bg-slate-100 border border-slate-200/60 flex items-center justify-center text-slate-500 shrink-0">
+            <span class="text-xs font-bold font-serif italic">i</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 3: Enable Cache -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-6">
+        <div class="flex items-center gap-4">
+          <span class="text-primary font-bold text-[15px] w-32 shrink-0">Enable Cache:</span>
+          <!-- Toggle ON/Active -->
+          <div onclick="toggleSwitcher(this)" class="w-10 h-6 bg-success rounded-full relative cursor-pointer shrink-0 transition-colors shadow-inner">
+            <div class="w-4 h-4 bg-white rounded-full absolute right-1 top-1 shadow-sm"></div>
+          </div>
+          <span class="text-primary font-medium text-[15px] hidden md:block ml-4">Enable Cache for Large Mailboxes &amp; Slow Mail Servers</span>
+        </div>
+        <div class="flex items-center gap-4 justify-between md:justify-end">
+          <span class="text-primary font-medium text-[15px] block md:hidden">Enable Cache for Large Mailboxes &amp; Slow Mail Servers</span>
+          <div class="w-6 h-6 rounded-full bg-slate-100 border border-slate-200/60 flex items-center justify-center text-slate-500 shrink-0">
+            <span class="text-xs font-bold font-serif italic">i</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Row 4: Reduce Bandwidth -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="flex items-center gap-4">
+          <span class="text-primary font-bold text-[15px] w-32 shrink-0">Reduce Bandwidth:</span>
+          <!-- Toggle ON/Active -->
+          <div onclick="toggleSwitcher(this)" class="w-10 h-6 bg-success rounded-full relative cursor-pointer shrink-0 transition-colors shadow-inner">
+            <div class="w-4 h-4 bg-white rounded-full absolute right-1 top-1 shadow-sm"></div>
+          </div>
+          <span class="text-primary font-medium text-[15px] hidden md:block ml-4">Reduce Bandwidth Consumption Between Servers</span>
+        </div>
+        <div class="flex items-center gap-4 justify-between md:justify-end">
+          <span class="text-primary font-medium text-[15px] block md:hidden">Reduce Bandwidth Consumption Between Servers</span>
+          <div class="w-6 h-6 rounded-full bg-slate-100 border border-slate-200/60 flex items-center justify-center text-slate-500 shrink-0">
+            <span class="text-xs font-bold font-serif italic">i</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+  </div>
+
+</div>
+
+<!-- JavaScript for Advanced Settings Toggle -->
+<script>
+  function toggleAdvancedSettings() {
+    const body = document.getElementById('advancedSettingsBody');
+    const icon = document.getElementById('advancedSettingsIcon');
+
+    if (body.classList.contains('hidden')) {
+      body.classList.remove('hidden');
+      icon.classList.remove('rotate-180');
+    } else {
+      body.classList.add('hidden');
+      icon.classList.add('rotate-180');
+    }
+  }
+
+  function setSyncMode(mode) {
+    const btnAuto = document.getElementById('btnAutoSync');
+    const btnBackup = document.getElementById('btnBackupMode');
+    const text = document.getElementById('syncModeText');
+
+    if (mode === 'auto') {
+      btnAuto.className = "flex-1 bg-white shadow-sm rounded-lg py-2.5 text-primary font-bold text-sm border border-slate-100 transition-all";
+      btnBackup.className = "flex-1 py-2.5 text-slate-500 font-semibold text-sm hover:text-primary transition-colors transition-all";
+      text.textContent = "Automatically synchronize emails for 10 days";
+    } else {
+      btnAuto.className = "flex-1 py-2.5 text-slate-500 font-semibold text-sm hover:text-primary transition-colors transition-all";
+      btnBackup.className = "flex-1 bg-white shadow-sm rounded-lg py-2.5 text-primary font-bold text-sm border border-slate-100 transition-all";
+      text.textContent = "Permanently Sync Emails to Target Mailbox";
+    }
+  }
+
+  function toggleSwitcher(el) {
+    const knob = el.querySelector('div');
+    if (el.classList.contains('bg-success')) {
+      // Turn OFF
+      el.classList.remove('bg-success');
+      el.classList.add('bg-slate-200', 'border', 'border-slate-300/50');
+      knob.classList.remove('right-1');
+      knob.classList.add('left-1');
+      return false;
+    } else {
+      // Turn ON
+      el.classList.remove('bg-slate-200', 'border', 'border-slate-300/50');
+      el.classList.add('bg-success');
+      knob.classList.remove('left-1');
+      knob.classList.add('right-1');
+      return true;
+    }
+  }
+
+  function handleThrottling(el) {
+    const state = toggleSwitcher(el);
+    const wrapper = document.getElementById('throttling-select-wrapper');
+    const selectBtn = document.getElementById('select-throttling');
+    
+    if (state) {
+      wrapper.classList.remove('opacity-50');
+      selectBtn.removeAttribute('disabled');
+    } else {
+      wrapper.classList.add('opacity-50');
+      selectBtn.setAttribute('disabled', 'true');
+      const panel = wrapper.querySelector('.custom-dropdown-panel');
+      if (panel) panel.classList.add('hidden');
+      const arrow = wrapper.querySelector('.dropdown-arrow');
+      if (arrow) arrow.classList.remove('rotate-180');
+    }
+  }
+
+  function updateSelectedDropdownStyles(container) {
+    const panel = container.querySelector('.custom-dropdown-panel');
+    if (!panel) return;
+    const trigger = container.querySelector('button');
+    if (!trigger) return;
+    
+    const valEl = trigger.querySelector('[id*="-val"]') || trigger.querySelector('span');
+    if (!valEl) return;
+    const activeText = valEl.textContent.trim().toLowerCase();
+    
+    const options = panel.children;
+    for (let opt of options) {
+      let optText = "";
+      const spanInside = opt.querySelector('span');
+      if (spanInside) {
+        optText = spanInside.textContent.trim().toLowerCase();
+      } else {
+        optText = opt.textContent.trim().toLowerCase();
+      }
+      
+      const isSelected = activeText.includes(optText) || optText.includes(activeText);
+      const checkmark = opt.querySelector('.checkmark-icon');
+      
+      if (isSelected) {
+        opt.classList.add('bg-slate-100/70');
+        if (checkmark) checkmark.classList.remove('hidden');
+      } else {
+        opt.classList.remove('bg-slate-100/70');
+        if (checkmark) checkmark.classList.add('hidden');
+      }
+    }
+  }
+
+  function toggleDropdown(button) {
+    if (button.hasAttribute('disabled') || button.disabled) return;
+    const container = button.closest('.custom-dropdown-container');
+    const panel = container.querySelector('.custom-dropdown-panel');
+    const arrow = container.querySelector('.dropdown-arrow');
+    
+    document.querySelectorAll('.custom-dropdown-panel').forEach(p => {
+      if (p !== panel) {
+        p.classList.add('hidden');
+        const otherArrow = p.closest('.custom-dropdown-container').querySelector('.dropdown-arrow');
+        if (otherArrow) otherArrow.classList.remove('rotate-180');
+      }
+    });
+
+    const isHidden = panel.classList.contains('hidden');
+    if (isHidden) {
+      updateSelectedDropdownStyles(container);
+      panel.classList.remove('hidden');
+      if (arrow) arrow.classList.add('rotate-180');
+    } else {
+      panel.classList.add('hidden');
+      if (arrow) arrow.classList.remove('rotate-180');
+    }
+  }
+
+  function selectOption(optionEl, value, displayId) {
+    document.getElementById(displayId).textContent = value;
+    
+    const container = optionEl.closest('.custom-dropdown-container');
+    container.querySelector('.custom-dropdown-panel').classList.add('hidden');
+    container.querySelector('.dropdown-arrow').classList.remove('rotate-180');
+    
+    updateSelectedDropdownStyles(container);
+  }
+
+  document.addEventListener('click', (e) => {
+    const openPanels = document.querySelectorAll('.custom-dropdown-panel:not(.hidden)');
+    openPanels.forEach(panel => {
+      const container = panel.closest('.custom-dropdown-container');
+      if (container && !container.contains(e.target)) {
+        panel.classList.add('hidden');
+        const arrow = container.querySelector('.dropdown-arrow');
+        if (arrow) arrow.classList.remove('rotate-180');
+      }
+    });
+  });
+
+  // Initialize selected item styles on load
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('.custom-dropdown-container').forEach(container => {
+      updateSelectedDropdownStyles(container);
+    });
+  });
+
+  function openDetailsModal() {
+    const modal = document.getElementById('detailsModal');
+    const card = modal.querySelector('.transform');
+    
+    modal.classList.remove('pointer-events-none', 'opacity-0');
+    modal.classList.add('opacity-100');
+    
+    card.classList.remove('scale-95', 'opacity-0');
+    card.classList.add('scale-100', 'opacity-100');
+    
+    // Prevent background scrolling when modal is open
+    document.body.classList.add('overflow-hidden');
+  }
+
+  function closeDetailsModal() {
+    const modal = document.getElementById('detailsModal');
+    const card = modal.querySelector('.transform');
+    
+    card.classList.remove('scale-100', 'opacity-100');
+    card.classList.add('scale-95', 'opacity-0');
+    
+    modal.classList.remove('opacity-100');
+    modal.classList.add('opacity-0', 'pointer-events-none');
+    
+    // Re-enable background scrolling
+    document.body.classList.remove('overflow-hidden');
+  }
+</script>
+
+<!-- Details Modal Backdrop -->
+<div id="detailsModal" class="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 opacity-0 pointer-events-none transition-all duration-300">
+  <!-- Soft Blur Overlay -->
+  <div onclick="closeDetailsModal()" class="absolute inset-0 bg-slate-900/50 backdrop-blur-md transition-opacity duration-300"></div>
+
+  <!-- Modal Card -->
+  <div class="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden transform scale-95 opacity-0 transition-all duration-300 z-10 max-h-[85vh]">
+    <!-- Close Button (X) -->
+    <button onclick="closeDetailsModal()" class="absolute top-5 right-5 text-slate-400 hover:text-slate-600 transition-colors p-1.5 rounded-full hover:bg-slate-100 focus:outline-none">
+      <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M6 18L18 6M6 6l12 12" stroke-linecap="round" stroke-linejoin="round"></path>
+      </svg>
+    </button>
+
+    <!-- Modal Body Content -->
+    <div class="p-6 md:p-8 overflow-y-auto space-y-6">
+      <h2 class="text-xl md:text-2xl font-bold text-[#202B8C] pr-8">Migrated Folders &amp; Emails</h2>
+      
+      <!-- Info Box -->
+      <div class="bg-primary/5 border border-primary/10 rounded-xl p-4 md:p-5">
+        <p class="text-primary-dark font-bold text-sm mb-1 text-[#1A237E]">The folders listed below were transferred.</p>
+        <p class="text-primary/70 text-xs md:text-sm leading-relaxed text-[#202B8C]/70">For each folder, the specified number of emails were transferred, skipped (to prevent duplicates) or rejected by the new mail server (failed).</p>
+      </div>
+
+      <!-- Folders Table -->
+      <div class="overflow-x-auto border border-slate-100 rounded-xl">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="bg-slate-50 border-b border-slate-200 text-[#1A237E]">
+              <th class="py-3 px-4 text-left font-bold">Folder</th>
+              <th class="py-3 px-4 text-right font-bold w-32">Emails migrated</th>
+              <th class="py-3 px-4 text-right font-bold w-32">Emails skipped</th>
+              <th class="py-3 px-4 text-right font-bold w-32">Emails failed</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100 text-[#202B8C]">
+            <!-- Row: deleted items -->
+            <tr class="hover:bg-slate-50/50 text-slate-500">
+              <td class="py-3.5 px-4 font-semibold italic text-slate-400">deleted items</td>
+              <td class="py-3.5 px-4 text-right font-medium"></td>
+              <td class="py-3.5 px-4 text-right font-medium"></td>
+              <td class="py-3.5 px-4 text-right font-medium italic text-slate-400">Folder is empty</td>
+            </tr>
+            <!-- Row: drafts -->
+            <tr class="hover:bg-slate-50/50">
+              <td class="py-3.5 px-4 font-semibold">drafts</td>
+              <td class="py-3.5 px-4 text-right font-medium">1</td>
+              <td class="py-3.5 px-4 text-right font-medium">0</td>
+              <td class="py-3.5 px-4 text-right font-medium">0</td>
+            </tr>
+            <!-- Row: inbox -->
+            <tr class="hover:bg-slate-50/50 font-bold bg-slate-50/20">
+              <td class="py-3.5 px-4">inbox</td>
+              <td class="py-3.5 px-4 text-right text-blue-600">615</td>
+              <td class="py-3.5 px-4 text-right">0</td>
+              <td class="py-3.5 px-4 text-right">0</td>
+            </tr>
+            <!-- Row: junk -->
+            <tr class="hover:bg-slate-50/50">
+              <td class="py-3.5 px-4 font-semibold">junk</td>
+              <td class="py-3.5 px-4 text-right font-medium">1</td>
+              <td class="py-3.5 px-4 text-right font-medium">0</td>
+              <td class="py-3.5 px-4 text-right font-medium">0</td>
+            </tr>
+            <!-- Row: junk mail -->
+            <tr class="hover:bg-slate-50/50">
+              <td class="py-3.5 px-4 font-semibold">junk mail</td>
+              <td class="py-3.5 px-4 text-right font-medium">7</td>
+              <td class="py-3.5 px-4 text-right font-medium">0</td>
+              <td class="py-3.5 px-4 text-right font-medium">0</td>
+            </tr>
+            <!-- Row: sent items -->
+            <tr class="hover:bg-slate-50/50">
+              <td class="py-3.5 px-4 font-semibold">sent items</td>
+              <td class="py-3.5 px-4 text-right font-medium">4</td>
+              <td class="py-3.5 px-4 text-right font-medium">0</td>
+              <td class="py-3.5 px-4 text-right font-medium">0</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- OK Button at the bottom -->
+    <button onclick="closeDetailsModal()" class="w-full bg-[#1A237E] hover:bg-[#202B8C] py-4 font-bold text-base transition-colors duration-200 select-none">
+      OK
+    </button>
+  </div>
+</div>

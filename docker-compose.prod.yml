@@ -1,0 +1,85 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    volumes:
+      - redisdata:/data
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: prod
+    restart: always
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.emt-api.rule=Host(`${PUBLIC_DOMAIN}`) && PathPrefix(`/api`)'
+      - 'traefik.http.routers.emt-api.entrypoints=websecure'
+      - 'traefik.http.routers.emt-api.tls.certresolver=letsencrypt'
+      - 'traefik.http.services.emt-api.loadbalancer.server.port=3000'
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+      target: prod
+    restart: always
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+    deploy:
+      replicas: 2
+    volumes:
+      - imapsync-state:/var/lib/imapsync
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: prod
+      args:
+        VITE_API_BASE: https://${PUBLIC_DOMAIN}
+    restart: always
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.emt-web.rule=Host(`${PUBLIC_DOMAIN}`)'
+      - 'traefik.http.routers.emt-web.entrypoints=websecure'
+      - 'traefik.http.routers.emt-web.tls.certresolver=letsencrypt'
+      - 'traefik.http.services.emt-web.loadbalancer.server.port=80'
+
+volumes:
+  pgdata:
+  redisdata:
+  imapsync-state:
