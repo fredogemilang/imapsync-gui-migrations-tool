@@ -20,3 +20,9 @@ imapsync-state/
 *.png
 !apps/web/public/*.png
 
+# Design reference — not part of the runtime app
+mockup/
+
+# Per-developer Claude Code / IDE config
+.claude/
+
