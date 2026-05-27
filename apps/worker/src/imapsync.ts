@@ -5,6 +5,8 @@ import { env } from './env.js';
 
 export type Security = 'SSL/TLS' | 'STARTTLS' | 'None';
 
+export type EmailHeaderSetting = 'default' | 'Strip Custom Headers' | 'Keep All Headers';
+
 export type ImapsyncOptions = {
   source: { host: string; port: number; security: Security; username: string; password: string };
   target: { host: string; port: number; security: Security; username: string; password: string };
@@ -14,6 +16,15 @@ export type ImapsyncOptions = {
   throttleBytesPerSecond?: number;
   enableCache?: boolean;
   reduceBandwidth?: boolean;
+  /** When true, imapsync matches by UID instead of Message-Id headers, so
+   *  duplicate copies in source (same Message-Id but different UIDs) all get
+   *  migrated. Off by default → imapsync's normal header-based dedup. */
+  syncDuplicates?: boolean;
+  /** Header processing intent, drawn from app_setting.emailHeaderSettings:
+   *   - "default" / "Keep All Headers" → no extra flags (imapsync preserves
+   *     headers by default)
+   *   - "Strip Custom Headers" → `--regexhead` regex that removes X-* lines */
+  emailHeaderSettings?: EmailHeaderSetting;
 };
 
 export type ProgressEvent =
@@ -22,6 +33,20 @@ export type ProgressEvent =
   | { kind: 'percent'; percent: number }
   | { kind: 'speed'; emailsPerSec: number; bytesPerSec: number }
   | { kind: 'log'; level: 'info' | 'warn' | 'error'; message: string }
+  /** Per-folder tally emitted when imapsync moves to the next folder (or
+   *  on close for the last folder). Counts are derived from imapsync's
+   *  per-message stdout lines — see parseLine() for the regex contract.
+   *  `bytes` is the sum of `{N}` size tags on lines classified as 'copied',
+   *  giving an authoritative "bytes actually moved" figure even for source
+   *  servers that don't advertise IMAP STATUS=SIZE (RFC 8438). */
+  | {
+      kind: 'folder-stats';
+      name: string;
+      copied: number;
+      skipped: number;
+      failed: number;
+      bytes: number;
+    }
   | { kind: 'done'; ok: boolean; error?: string };
 
 // Narrowed to the literal union so any drift (lowercase, mistyped) is a
@@ -35,6 +60,45 @@ function securityFlags(prefix: 'host1' | 'host2', sec: Security): string[] {
 
 export function daysSince(d: Date, now: number = Date.now()): number {
   return Math.max(0, Math.floor((now - d.getTime()) / 86_400_000));
+}
+
+/**
+ * Pure classifier for a single imapsync stdout line. Pulled out of parseLine
+ * so the regex contract is unit-testable without spawning a subprocess.
+ *
+ * Returns the per-message outcome the line announces, or null when the line
+ * is a header / global-summary / progress tick. The regex set is permissive
+ * because imapsync's output format varies across versions — we err on the
+ * side of "if we can't tell, don't count it".
+ *
+ * Rules (evaluated in order):
+ *   1. Line must mention a specific message (`msg foo/123` or a `{N}` size
+ *      tag). This excludes global summary lines like "Messages skipped: 0".
+ *   2. NOK marker or "Error msg ..." → failed
+ *   3. Mentions "already" / "skipping" / "skipped" → skipped
+ *   4. Mentions "copied" or starts with "Copying" → copied
+ */
+/**
+ * Pull the message size in bytes out of an imapsync stdout line, if present.
+ * imapsync prefixes message-level operations with a `{N}` size tag (the IMAP
+ * literal-length convention). Returns 0 when the tag is missing or malformed
+ * — that's not a fatal condition, we just won't count bytes for that line.
+ */
+export function extractMessageBytes(line: string): number {
+  const m = line.match(/\{(\d+)\}/);
+  if (!m) return 0;
+  const n = Number(m[1]);
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+}
+
+export type LineClassification = 'copied' | 'skipped' | 'failed' | null;
+export function classifyImapsyncLine(line: string): LineClassification {
+  const hasMsgMarker = /\bmsg\s+\S+[/:]\d+/i.test(line) || /\{\d+\}/.test(line);
+  if (!hasMsgMarker) return null;
+  if (/^\+?\s*NOK\b/i.test(line) || /Error\s+msg\b/i.test(line)) return 'failed';
+  if (/\b(?:already|skipped|skipping)\b/i.test(line)) return 'skipped';
+  if (/\bcopied\b/i.test(line) || /^\+?\s*Copying\b/i.test(line)) return 'copied';
+  return null;
 }
 
 export type BuildArgsInput = Omit<ImapsyncOptions, 'source' | 'target'> & {
@@ -60,7 +124,7 @@ export function buildImapsyncArgs(opts: BuildArgsInput): string[] {
     String(opts.source.port),
     '--user1',
     opts.source.username,
-    '--password1file',
+    '--passfile1',
     opts.pw1Path,
     ...securityFlags('host1', opts.source.security),
     '--host2',
@@ -69,14 +133,14 @@ export function buildImapsyncArgs(opts: BuildArgsInput): string[] {
     String(opts.target.port),
     '--user2',
     opts.target.username,
-    '--password2file',
+    '--passfile2',
     opts.pw2Path,
     ...securityFlags('host2', opts.target.security),
-    '--no-modulesversion',
     '--noreleasecheck',
     '--nofoldersizes',
     '--pidfile',
     opts.pidfile,
+    '--log',
     '--logdir',
     opts.stateDir,
     '--logfile',
@@ -84,9 +148,27 @@ export function buildImapsyncArgs(opts: BuildArgsInput): string[] {
   ];
 
   if (opts.reduceBandwidth) args.push('--useuid', '--usecache');
+  // Sync Duplicates: match by source UID, so multiple source copies of the
+  // same Message-Id each get migrated. Without this flag imapsync's default
+  // header-based dedup collapses them to one. (reduceBandwidth already adds
+  // --useuid, so we don't double-add.)
+  if (opts.syncDuplicates && !opts.reduceBandwidth) args.push('--useuid');
   if (opts.enableCache) args.push('--usecache');
   if (opts.throttleBytesPerSecond) {
     args.push('--maxbytespersecond', String(opts.throttleBytesPerSecond));
+  }
+
+  // Email header strategy. We only emit a regex for "Strip Custom Headers"
+  // because imapsync's default behaviour already preserves every header
+  // bit-for-bit, so "default" and "Keep All Headers" are no-ops.
+  //
+  // The regex matches lines beginning with "X-" headers — the X- prefix
+  // convention for non-standard / vendor-specific headers (X-Mailer,
+  // X-Spam-Status, X-Originating-IP, etc.). RFC 822 standard headers
+  // (From, To, Subject, Received, Authentication-Results...) are
+  // preserved. `m` flag = multi-line so ^ anchors per-line.
+  if (opts.emailHeaderSettings === 'Strip Custom Headers') {
+    args.push('--regexhead', 's/^X-[A-Za-z0-9-]+:[^\\r\\n]*\\r?\\n//mg');
   }
 
   // Date filter — only emit a bound when the matching date is real.
@@ -241,14 +323,65 @@ export async function runImapsync(
   let bytesSinceLast = 0;
   let msgsSinceLast = 0;
 
+  // Per-folder tallies — flushed as a 'folder-stats' event when imapsync
+  // moves to the next folder (or in close handler for the last one).
+  //
+  // imapsync's per-message stdout format varies by version, so the regexes
+  // below try to be permissive. They count a line as:
+  //   - copied   if it announces a successful message copy
+  //   - skipped  if it announces "already" on host2 / dedupe-skip
+  //   - failed   if imapsync prefixes the line with `NOK ` or `Error:`
+  // The line MUST also mention "msg <folder>/<uid>" or contain a {size}
+  // tag so we don't accidentally count global summary lines.
+  const folderCopied: Record<string, number> = {};
+  const folderSkipped: Record<string, number> = {};
+  const folderFailed: Record<string, number> = {};
+  const folderBytes: Record<string, number> = {};
+  const bump = (m: Record<string, number>, k: string): void => {
+    m[k] = (m[k] ?? 0) + 1;
+  };
+  const flushFolderStats = (name: string): void => {
+    if (!name) return;
+    onEvent({
+      kind: 'folder-stats',
+      name,
+      copied: folderCopied[name] ?? 0,
+      skipped: folderSkipped[name] ?? 0,
+      failed: folderFailed[name] ?? 0,
+      bytes: folderBytes[name] ?? 0,
+    });
+  };
+
   const parseLine = (line: string) => {
     const folderMatch = line.match(/Folder\s+(\d+)\/(\d+)\s+\[([^\]]+)\]/);
     if (folderMatch) {
+      const nextName = folderMatch[3]!;
+      // Flush the previous folder's tally before swapping context. We only
+      // flush on a *real* swap so the same "Folder X/Y [foo]" line repeated
+      // mid-folder doesn't double-emit zero counts.
+      if (currentFolder && currentFolder !== nextName) {
+        flushFolderStats(currentFolder);
+      }
       folderIndex = Number(folderMatch[1]);
       folderTotal = Number(folderMatch[2]);
-      currentFolder = folderMatch[3]!;
+      currentFolder = nextName;
       onEvent({ kind: 'folder', name: currentFolder, index: folderIndex, total: folderTotal });
       return;
+    }
+
+    // Classify per-message outcome using the extracted pure helper so the
+    // regex contract is unit-tested in imapsync.test.ts. Only 'copied' lines
+    // contribute to migratedBytes — bytes from skipped messages were already
+    // on target, and failed bytes were never moved.
+    if (currentFolder) {
+      const kind = classifyImapsyncLine(line);
+      if (kind === 'failed') bump(folderFailed, currentFolder);
+      else if (kind === 'skipped') bump(folderSkipped, currentFolder);
+      else if (kind === 'copied') {
+        bump(folderCopied, currentFolder);
+        folderBytes[currentFolder] =
+          (folderBytes[currentFolder] ?? 0) + extractMessageBytes(line);
+      }
     }
 
     const msgMatch = line.match(/(?:msg|Message)\s+\S+[/:](\d+)/i);
@@ -294,6 +427,9 @@ export async function runImapsync(
     if (closed) return;
     closed = true;
     if (buf.length) parseLine(buf);
+    // Flush the FINAL folder's tally — the next-folder boundary that would
+    // normally trigger this never arrives for the last folder in a run.
+    if (currentFolder) flushFolderStats(currentFolder);
     if (signal === 'SIGTERM' || signal === 'SIGKILL') {
       onEvent({ kind: 'done', ok: false, error: 'cancelled' });
     } else if (code === 0) {

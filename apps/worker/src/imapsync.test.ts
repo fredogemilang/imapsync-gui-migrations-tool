@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { buildImapsyncArgs, daysSince, type BuildArgsInput } from './imapsync.js';
+import {
+  buildImapsyncArgs,
+  classifyImapsyncLine,
+  daysSince,
+  extractMessageBytes,
+  type BuildArgsInput,
+} from './imapsync.js';
 
 const baseInput: BuildArgsInput = {
   source: { host: 'src.example.com', port: 993, security: 'SSL/TLS', username: 'u1' },
@@ -12,13 +18,13 @@ const baseInput: BuildArgsInput = {
 };
 
 describe('buildImapsyncArgs — credential safety (finding #1)', () => {
-  it('passes passwords via --password1file/--password2file, never on argv', () => {
+  it('passes passwords via --passfile1/--passfile2, never on argv', () => {
     const args = buildImapsyncArgs(baseInput);
     // Files must be present
-    expect(args).toContain('--password1file');
-    expect(args).toContain('--password2file');
-    expect(args[args.indexOf('--password1file') + 1]).toBe('/tmp/.pw1');
-    expect(args[args.indexOf('--password2file') + 1]).toBe('/tmp/.pw2');
+    expect(args).toContain('--passfile1');
+    expect(args).toContain('--passfile2');
+    expect(args[args.indexOf('--passfile1') + 1]).toBe('/tmp/.pw1');
+    expect(args[args.indexOf('--passfile2') + 1]).toBe('/tmp/.pw2');
     // CLI flags that take passwords inline MUST NOT appear
     expect(args).not.toContain('--password1');
     expect(args).not.toContain('--password2');
@@ -147,6 +153,124 @@ describe('buildImapsyncArgs — throttle & cache toggles', () => {
     const args = buildImapsyncArgs({ ...baseInput, reduceBandwidth: true });
     expect(args).toContain('--useuid');
     expect(args).toContain('--usecache');
+  });
+});
+
+describe('buildImapsyncArgs — emailHeaderSettings (finding: wire app_setting → imapsync)', () => {
+  it('does NOT add --regexhead when omitted or "default"', () => {
+    expect(buildImapsyncArgs(baseInput)).not.toContain('--regexhead');
+    expect(
+      buildImapsyncArgs({ ...baseInput, emailHeaderSettings: 'default' }),
+    ).not.toContain('--regexhead');
+  });
+
+  it('does NOT add --regexhead for "Keep All Headers" — that\'s imapsync\'s natural behaviour', () => {
+    expect(
+      buildImapsyncArgs({ ...baseInput, emailHeaderSettings: 'Keep All Headers' }),
+    ).not.toContain('--regexhead');
+  });
+
+  it('adds --regexhead with X-* strip pattern for "Strip Custom Headers"', () => {
+    const args = buildImapsyncArgs({
+      ...baseInput,
+      emailHeaderSettings: 'Strip Custom Headers',
+    });
+    expect(args).toContain('--regexhead');
+    const idx = args.indexOf('--regexhead');
+    const pattern = args[idx + 1]!;
+    // Sanity: regex begins with s/ (Perl substitute syntax), targets X-,
+    // and the m flag is present so ^ anchors per-line.
+    expect(pattern.startsWith('s/^X-')).toBe(true);
+    expect(pattern.endsWith('/mg')).toBe(true);
+  });
+});
+
+describe('buildImapsyncArgs — syncDuplicates', () => {
+  it('default (off) does not add --useuid', () => {
+    const args = buildImapsyncArgs(baseInput);
+    expect(args).not.toContain('--useuid');
+  });
+
+  it('on → adds --useuid', () => {
+    const args = buildImapsyncArgs({ ...baseInput, syncDuplicates: true });
+    expect(args).toContain('--useuid');
+  });
+
+  it('with reduceBandwidth, only one --useuid flag is added', () => {
+    const args = buildImapsyncArgs({
+      ...baseInput,
+      syncDuplicates: true,
+      reduceBandwidth: true,
+    });
+    const useuidCount = args.filter((a) => a === '--useuid').length;
+    expect(useuidCount).toBe(1);
+  });
+});
+
+describe('classifyImapsyncLine — per-folder stats parser', () => {
+  it('classifies a typical "copied" log line', () => {
+    expect(classifyImapsyncLine('+ msg INBOX/123 [4567] {1234} copied to host2')).toBe('copied');
+    expect(classifyImapsyncLine('Copying msg INBOX/45 {678}')).toBe('copied');
+  });
+
+  it('classifies "already on host2" / skip lines as skipped', () => {
+    expect(classifyImapsyncLine('+ msg INBOX/12 already on host2')).toBe('skipped');
+    expect(classifyImapsyncLine('Skipping msg INBOX/3 {99}')).toBe('skipped');
+  });
+
+  it('classifies NOK / per-message error lines as failed', () => {
+    expect(classifyImapsyncLine('+ NOK msg INBOX/5 {123}: rejected')).toBe('failed');
+    expect(classifyImapsyncLine('Error msg INBOX/7: APPEND failed')).toBe('failed');
+  });
+
+  it('returns null for global summary lines without a per-message marker', () => {
+    // These are end-of-run aggregates — we MUST NOT double-count them or the
+    // per-folder tally explodes.
+    expect(classifyImapsyncLine('Messages skipped                       : 0')).toBeNull();
+    expect(classifyImapsyncLine('Total bytes transferred                : 12345')).toBeNull();
+    expect(classifyImapsyncLine('+++ Statistics')).toBeNull();
+  });
+
+  it('returns null for folder-boundary and informational lines', () => {
+    expect(classifyImapsyncLine('Folder 1/6 [INBOX]')).toBeNull();
+    expect(classifyImapsyncLine('Host1 IMAP server: imap.example.com')).toBeNull();
+    expect(classifyImapsyncLine('')).toBeNull();
+  });
+
+  it('prefers "skipped" over "copied" when both words appear', () => {
+    // imapsync sometimes prints "not copied because already on host2".
+    // Order in the classifier matters — we test it.
+    expect(classifyImapsyncLine('+ msg INBOX/1 {12} not copied: already on host2')).toBe(
+      'skipped',
+    );
+  });
+});
+
+describe('extractMessageBytes — {N} size tag parser', () => {
+  it('extracts size from a copied message line', () => {
+    expect(extractMessageBytes('+ msg INBOX/123 {12345} copied to host2')).toBe(12345);
+  });
+
+  it('returns 0 when no {N} tag is present', () => {
+    expect(extractMessageBytes('Folder 1/6 [INBOX]')).toBe(0);
+    expect(extractMessageBytes('')).toBe(0);
+  });
+
+  it('grabs the first {N} match when multiple appear', () => {
+    // Some imapsync versions print both source and target sizes on one line.
+    // We accept the first — it's the source-message size.
+    expect(extractMessageBytes('msg INBOX/1 {5000} -> Sent/3 {5100} copied')).toBe(5000);
+  });
+
+  it('returns 0 for malformed / non-numeric size tags', () => {
+    // {N} with non-digits is not a real imapsync tag; regex won't match
+    // because we require \d+, so the result is correctly 0.
+    expect(extractMessageBytes('msg INBOX/1 {abc} copied')).toBe(0);
+  });
+
+  it('handles large messages (>4 GB safely as a JS number)', () => {
+    // 5 GiB literal — Number can represent this exactly (< 2^53).
+    expect(extractMessageBytes('msg HUGE/1 {5368709120} copied')).toBe(5368709120);
   });
 });
 
