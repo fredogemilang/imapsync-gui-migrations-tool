@@ -13,6 +13,7 @@ import { imapRoutes } from './routes/imap.js';
 import { migrationRoutes } from './routes/migrations.js';
 import { bulkRoutes } from './routes/bulk.js';
 import { settingsRoutes } from './routes/settings.js';
+import { notificationRoutes } from './routes/notifications.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -90,6 +91,7 @@ async function main() {
   await app.register(migrationRoutes);
   await app.register(bulkRoutes);
   await app.register(settingsRoutes);
+  await app.register(notificationRoutes);
 
   await seedAdmin();
   await app.listen({ host: '0.0.0.0', port: env.API_PORT });

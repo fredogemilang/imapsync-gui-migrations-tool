@@ -1,17 +1,40 @@
 const BASE = ''; // proxied via vite or same-origin in prod
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  // IMPORTANT: only advertise application/json when we actually send a body.
+  // Fastify's default JSON parser rejects empty-body requests when the
+  // Content-Type header is set to application/json with the runtime error
+  // "Body cannot be empty when content-type is set to 'application/json'".
+  // This used to fire for every body-less mutation (logout, stop, resume,
+  // disable sync, sync now, delete) — those endpoints look like they
+  // happened to "work" only because the network errors were silently
+  // ignored elsewhere.
+  const hasBody = init?.body != null;
+  const userHeaders = (init?.headers ?? {}) as Record<string, string>;
+  const headers: Record<string, string> = { ...userHeaders };
+  if (hasBody && !Object.keys(headers).some((k) => k.toLowerCase() === 'content-type')) {
+    headers['Content-Type'] = 'application/json';
+  }
+
   const res = await fetch(BASE + path, {
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(init?.headers ?? {}),
-    },
     ...init,
+    headers,
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error((body as any).error ?? `HTTP ${res.status}`);
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      message?: string;
+    };
+    // Surface the most informative field. Our handlers use `error: '...'`;
+    // Fastify's default 404/error returns also include a `message` field
+    // (e.g. "Route DELETE:/api/migrations/... not found") which is far
+    // more diagnostic when the API server is on stale code. Join both when
+    // they disagree so the user sees the full picture.
+    const parts = [body.error, body.message].filter(
+      (v, i, a): v is string => Boolean(v) && a.indexOf(v) === i,
+    );
+    throw new Error(parts.length ? parts.join(' — ') : `HTTP ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
@@ -42,13 +65,36 @@ export const api = {
       { method: 'POST', body: JSON.stringify(cfg) },
     ),
 
+  inspectAccount: (cfg: ImapCfg) =>
+    request<{
+      ok: boolean;
+      folders: { name: string; totalEmails: number; totalBytes: number }[];
+      folderCount: number;
+      totalEmails: number;
+      totalBytes: number;
+      quota: { usedBytes: number; limitBytes: number } | null;
+    }>('/api/imap/inspect', { method: 'POST', body: JSON.stringify(cfg) }),
+
   listMigrations: () => request<any[]>('/api/migrations'),
   getMigration: (id: string) => request<any>(`/api/migrations/${id}`),
   createMigration: (payload: any) =>
     request<{ id: string }>('/api/migrations', { method: 'POST', body: JSON.stringify(payload) }),
   stopMigration: (id: string) => request(`/api/migrations/${id}/stop`, { method: 'POST' }),
   resumeMigration: (id: string) => request(`/api/migrations/${id}/resume`, { method: 'POST' }),
+  deleteMigration: (id: string) =>
+    request<{ ok: boolean }>(`/api/migrations/${id}`, { method: 'DELETE' }),
+  /** Deletes every migration in a terminal state (completed/failed/cancelled). */
+  deleteFinishedMigrations: () =>
+    request<{ ok: boolean; deleted: number }>('/api/migrations', { method: 'DELETE' }),
   getLogs: (id: string) => request<any[]>(`/api/migrations/${id}/logs`),
+
+  enableSync: (id: string, mode: 'auto' | 'backup', interval?: 'daily' | 'weekly' | 'monthly') =>
+    request<{ ok: boolean; intervalMs: number; endsAt: string | null }>(
+      `/api/migrations/${id}/sync/enable`,
+      { method: 'POST', body: JSON.stringify({ mode, interval }) },
+    ),
+  disableSync: (id: string) => request(`/api/migrations/${id}/sync/disable`, { method: 'POST' }),
+  syncNow: (id: string) => request(`/api/migrations/${id}/sync/now`, { method: 'POST' }),
 
   listBulk: () => request<any[]>('/api/bulk-migrations'),
   getBulk: (id: string) => request<any>(`/api/bulk-migrations/${id}`),
@@ -57,10 +103,44 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  stopBulk: (id: string) =>
+    request<{ ok: boolean }>(`/api/bulk-migrations/${id}/stop`, { method: 'POST' }),
+  deleteBulk: (id: string) =>
+    request<{ ok: boolean }>(`/api/bulk-migrations/${id}`, { method: 'DELETE' }),
+  deleteFinishedBulks: () =>
+    request<{ ok: boolean; deleted: number }>('/api/bulk-migrations', { method: 'DELETE' }),
+  updateBulkSettings: (id: string, patch: Record<string, unknown>) =>
+    request<{ ok: boolean; settings: Record<string, unknown> }>(
+      `/api/bulk-migrations/${id}/settings`,
+      { method: 'PATCH', body: JSON.stringify(patch) },
+    ),
+  bulkSyncNow: (id: string) =>
+    request<{ ok: boolean; count: number }>(`/api/bulk-migrations/${id}/sync/now`, {
+      method: 'POST',
+    }),
 
   getSettings: () => request<any>('/api/settings'),
   saveSettings: (payload: any) =>
     request('/api/settings', { method: 'PUT', body: JSON.stringify(payload) }),
+
+  listNotifications: () =>
+    request<
+      {
+        id: string;
+        kind: 'success' | 'error' | 'warning' | 'info' | string;
+        title: string;
+        body: string;
+        linkPath: string | null;
+        readAt: string | null;
+        createdAt: string;
+      }[]
+    >('/api/notifications'),
+  unreadNotificationCount: () =>
+    request<{ count: number }>('/api/notifications/unread-count'),
+  markNotificationRead: (id: string) =>
+    request<{ ok: boolean }>(`/api/notifications/${id}/read`, { method: 'POST' }),
+  markAllNotificationsRead: () =>
+    request<{ ok: boolean; marked: number }>('/api/notifications/read-all', { method: 'POST' }),
 };
 
 export type ImapCfg = {

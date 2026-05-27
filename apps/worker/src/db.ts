@@ -6,6 +6,7 @@ import {
   text,
   integer,
   bigint,
+  boolean,
   timestamp,
   jsonb,
   uuid,
@@ -36,6 +37,7 @@ export const migration = pgTable('migration', {
   totalEmails: integer('total_emails').notNull(),
   migratedEmails: integer('migrated_emails').notNull(),
   totalBytes: bigint('total_bytes', { mode: 'number' }).notNull(),
+  migratedBytes: bigint('migrated_bytes', { mode: 'number' }).notNull(),
   progressPercent: integer('progress_percent').notNull(),
   currentFolder: text('current_folder'),
   jobId: text('job_id'),
@@ -43,6 +45,11 @@ export const migration = pgTable('migration', {
   startedAt: timestamp('started_at', { withTimezone: true }),
   finishedAt: timestamp('finished_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }),
+  syncMode: text('sync_mode').notNull(),
+  syncIntervalMs: bigint('sync_interval_ms', { mode: 'number' }),
+  syncEndsAt: timestamp('sync_ends_at', { withTimezone: true }),
+  lastSyncAt: timestamp('last_sync_at', { withTimezone: true }),
+  syncRunning: boolean('sync_running').notNull(),
 });
 
 export const migrationFolder = pgTable('migration_folder', {
@@ -52,6 +59,9 @@ export const migrationFolder = pgTable('migration_folder', {
   totalEmails: integer('total_emails').notNull(),
   totalBytes: bigint('total_bytes', { mode: 'number' }).notNull(),
   migratedEmails: integer('migrated_emails').notNull(),
+  migratedBytes: bigint('migrated_bytes', { mode: 'number' }).notNull(),
+  skippedEmails: integer('skipped_emails').notNull(),
+  failedEmails: integer('failed_emails').notNull(),
   status: text('status').notNull(),
 });
 
@@ -73,6 +83,7 @@ export const bulkMigration = pgTable('bulk_migration', {
   targetSecurity: text('target_security').notNull(),
   settings: jsonb('settings').notNull(),
   status: text('status').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }),
 });
 
 export const bulkPair = pgTable('bulk_pair', {
@@ -82,11 +93,34 @@ export const bulkPair = pgTable('bulk_pair', {
   sourcePasswordEnc: text('source_password_enc').notNull(),
   targetUsername: text('target_username').notNull(),
   targetPasswordEnc: text('target_password_enc').notNull(),
+  syncEnabled: boolean('sync_enabled').notNull(),
+  backupEnabled: boolean('backup_enabled').notNull(),
   status: text('status').notNull(),
   progressPercent: integer('progress_percent').notNull(),
   migratedEmails: integer('migrated_emails').notNull(),
   totalEmails: integer('total_emails').notNull(),
   error: text('error'),
+});
+
+// Key-value app settings — mirrors `apps/api/src/db/schema.ts`. Used by
+// the worker to read globally-configured fallbacks (e.g. retention days,
+// email header policy) without forcing the API to inject them per row.
+export const appSetting = pgTable('app_setting', {
+  key: text('key').primaryKey(),
+  value: jsonb('value').notNull(),
+});
+
+// Notification inbox — worker writes; API reads & marks-read.
+export const notification = pgTable('notification', {
+  id: uuid('id').primaryKey(),
+  kind: text('kind').notNull(),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  linkPath: text('link_path'),
+  readAt: timestamp('read_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  migrationId: uuid('migration_id'),
+  bulkId: uuid('bulk_id'),
 });
 
 const client = postgres({
