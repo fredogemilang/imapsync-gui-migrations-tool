@@ -6,8 +6,13 @@ import { appSetting } from '../db/schema.js';
 
 const SettingsBody = z.object({
   simultaneousMigrations: z.number().int().min(1).max(20).optional(),
-  retentionDays: z.number().int().min(1).max(365).optional(),
+  /** Days to keep finished migrations before auto-delete.
+   *  `0` = "Never Delete" sentinel (matches the mockup's "Never Delete" option). */
+  retentionDays: z.number().int().min(0).max(365).optional(),
   passwordDisplay: z.enum(['Obstructed', 'Readable']).optional(),
+  /** Stored for future imapsync header-handling support — UI captures
+   *  the user's intent so the worker can act on it once wired. */
+  emailHeaderSettings: z.enum(['default', 'Strip Custom Headers', 'Keep All Headers']).optional(),
 });
 
 export async function settingsRoutes(app: FastifyInstance) {
