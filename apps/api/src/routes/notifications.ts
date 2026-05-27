@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { notification } from '../db/schema.js';
 
@@ -33,14 +33,16 @@ export async function notificationRoutes(app: FastifyInstance) {
     return rows;
   });
 
-  // Unread count — separate endpoint so the bell badge can poll cheaply
-  // without transferring full bodies.
+  // Unread count — separate endpoint so the bell badge can poll cheaply.
+  // Use SQL COUNT(*) so payload + query plan are O(1) regardless of how
+  // many notifications have accumulated; otherwise polling every 30s
+  // would transfer N UUIDs per request just to discard them client-side.
   app.get('/api/notifications/unread-count', { preHandler: [app.requireAuth] }, async () => {
-    const rows = await db
-      .select({ id: notification.id })
+    const [row] = await db
+      .select({ count: sql<number>`count(*)::int` })
       .from(notification)
       .where(isNull(notification.readAt));
-    return { count: rows.length };
+    return { count: row?.count ?? 0 };
   });
 
   app.post(

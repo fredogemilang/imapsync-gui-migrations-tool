@@ -133,7 +133,13 @@ export async function handleSyncJob(job: Job<{ migrationId: string; manual?: boo
           username: tgt.username,
           password: decrypt(tgt.passwordEnc),
         },
-        migrationId: id,
+        // Namespace the imapsync state dir so a delta-sync tick can never
+        // share pidfile / .pw1 / .pw2 with the initial single-migration job
+        // (which uses just `id`). If the syncRunning guard ever fails to
+        // engage (race, manual DB poke) the two children would otherwise
+        // corrupt each other's tempfiles. Bulk pair sync uses the same
+        // `-sync` suffix convention.
+        migrationId: `${id}-sync`,
         dateFrom,
         dateTo,
         throttleBytesPerSecond: throttleBps,

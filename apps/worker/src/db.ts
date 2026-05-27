@@ -111,6 +111,9 @@ export const appSetting = pgTable('app_setting', {
 });
 
 // Notification inbox — worker writes; API reads & marks-read.
+// Mirrors `apps/api/src/db/schema.ts`. Keep `.defaultNow()` on createdAt
+// so that anyone running `drizzle-kit generate` from this package gets
+// the same CREATE TABLE DDL as the API would (DB-side default + NOT NULL).
 export const notification = pgTable('notification', {
   id: uuid('id').primaryKey(),
   kind: text('kind').notNull(),
@@ -118,7 +121,7 @@ export const notification = pgTable('notification', {
   body: text('body').notNull(),
   linkPath: text('link_path'),
   readAt: timestamp('read_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   migrationId: uuid('migration_id'),
   bulkId: uuid('bulk_id'),
 });

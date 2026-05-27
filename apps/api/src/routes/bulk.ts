@@ -4,7 +4,7 @@ import { desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { bulkMigration, bulkPair } from '../db/schema.js';
 import { encrypt } from '../lib/crypto.js';
-import { bulkQueue } from '../lib/queue.js';
+import { bulkPairSyncJobId, bulkPairSyncQueue, bulkQueue } from '../lib/queue.js';
 import { redis } from '../lib/redis.js';
 import { subscribeSSE } from '../lib/sse-bus.js';
 import { enqueueBulkSyncNow, reconcileBulkPairSyncs } from '../lib/bulk-sync.js';
@@ -146,6 +146,19 @@ export async function bulkRoutes(app: FastifyInstance) {
         .send({ error: `Bulk migration is ${b.status}. Stop it before deleting.` });
     }
 
+    // Proactively tear down any per-pair sync schedulers BEFORE we drop the
+    // row (cascade FK would orphan them otherwise — they'd self-heal on the
+    // next tick but until then BullMQ keeps firing the zombie schedules).
+    const pairs = await db
+      .select({ id: bulkPair.id })
+      .from(bulkPair)
+      .where(eq(bulkPair.bulkId, id));
+    await Promise.all(
+      pairs.map((p) =>
+        bulkPairSyncQueue.removeJobScheduler(bulkPairSyncJobId(p.id)).catch(() => {}),
+      ),
+    );
+
     await db.delete(bulkMigration).where(eq(bulkMigration.id, id));
     return { ok: true };
   });
@@ -158,6 +171,24 @@ export async function bulkRoutes(app: FastifyInstance) {
       .from(bulkMigration)
       .where(inArray(bulkMigration.status, BULK_TERMINAL as unknown as string[]));
     if (rows.length === 0) return { ok: true, deleted: 0 };
+
+    // Sweep per-pair schedulers BEFORE the cascade fires — see single-delete
+    // above for rationale.
+    const allPairs = await db
+      .select({ id: bulkPair.id })
+      .from(bulkPair)
+      .where(
+        inArray(
+          bulkPair.bulkId,
+          rows.map((r) => r.id),
+        ),
+      );
+    await Promise.all(
+      allPairs.map((p) =>
+        bulkPairSyncQueue.removeJobScheduler(bulkPairSyncJobId(p.id)).catch(() => {}),
+      ),
+    );
+
     await db.delete(bulkMigration).where(
       inArray(
         bulkMigration.id,
