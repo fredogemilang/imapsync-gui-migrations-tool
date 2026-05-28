@@ -50,7 +50,10 @@ function attachGlobalListener(): void {
  * that cleans up both the in-memory handler and (if last subscriber) the
  * upstream Redis subscription.
  */
-export async function subscribeSSE(channel: string, handler: Handler): Promise<() => Promise<void>> {
+export async function subscribeSSE(
+  channel: string,
+  handler: Handler,
+): Promise<() => Promise<void>> {
   attachGlobalListener();
 
   // Register the per-request handler.

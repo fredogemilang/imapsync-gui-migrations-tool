@@ -148,9 +148,7 @@ export function ChangePassword() {
             New passwords do not match. Please verify.
           </div>
         )}
-        {error && (
-          <div className="text-red-500 text-xs font-semibold text-center">{error}</div>
-        )}
+        {error && <div className="text-red-500 text-xs font-semibold text-center">{error}</div>}
 
         {/* Submit */}
         <button

@@ -1,13 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import {
-  ChevronRight,
-  Plus,
-  CheckCircle2,
-  Clock,
-  Layers,
-  XCircle,
-} from 'lucide-react';
+import { ChevronRight, Plus, CheckCircle2, Clock, Layers, XCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -146,7 +139,10 @@ export function Overview() {
       if (singleErr || bulkErr) {
         setAlertMsg({
           title: 'Partial delete',
-          body: [singleErr && `Single migrations: ${singleErr}`, bulkErr && `Bulk migrations: ${bulkErr}`]
+          body: [
+            singleErr && `Single migrations: ${singleErr}`,
+            bulkErr && `Bulk migrations: ${bulkErr}`,
+          ]
             .filter(Boolean)
             .join(' · '),
         });
@@ -309,7 +305,12 @@ function StatusIcon({ status }: { status: string }) {
   // "completed" + bulk-only "completed_with_errors" → green check.
   if (status === 'completed' || status === 'completed_with_errors')
     return (
-      <div className={cn('rounded-full p-1.5 flex items-center justify-center shadow-sm', status === 'completed_with_errors' ? 'bg-amber-500' : 'bg-emerald-500')}>
+      <div
+        className={cn(
+          'rounded-full p-1.5 flex items-center justify-center shadow-sm',
+          status === 'completed_with_errors' ? 'bg-amber-500' : 'bg-emerald-500',
+        )}
+      >
         <CheckCircle2 className="h-4 w-4 text-white" strokeWidth={3} />
       </div>
     );

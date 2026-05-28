@@ -45,33 +45,25 @@ export async function notificationRoutes(app: FastifyInstance) {
     return { count: row?.count ?? 0 };
   });
 
-  app.post(
-    '/api/notifications/:id/read',
-    { preHandler: [app.requireAuth] },
-    async (req, reply) => {
-      const id = (req.params as { id: string }).id;
-      const [row] = await db.select().from(notification).where(eq(notification.id, id)).limit(1);
-      if (!row) return reply.code(404).send({ error: 'Not found' });
-      if (!row.readAt) {
-        await db
-          .update(notification)
-          .set({ readAt: new Date() })
-          .where(and(eq(notification.id, id), isNull(notification.readAt)));
-      }
-      return { ok: true };
-    },
-  );
-
-  app.post(
-    '/api/notifications/read-all',
-    { preHandler: [app.requireAuth] },
-    async () => {
-      const r = await db
+  app.post('/api/notifications/:id/read', { preHandler: [app.requireAuth] }, async (req, reply) => {
+    const id = (req.params as { id: string }).id;
+    const [row] = await db.select().from(notification).where(eq(notification.id, id)).limit(1);
+    if (!row) return reply.code(404).send({ error: 'Not found' });
+    if (!row.readAt) {
+      await db
         .update(notification)
         .set({ readAt: new Date() })
-        .where(isNull(notification.readAt))
-        .returning({ id: notification.id });
-      return { ok: true, marked: r.length };
-    },
-  );
+        .where(and(eq(notification.id, id), isNull(notification.readAt)));
+    }
+    return { ok: true };
+  });
+
+  app.post('/api/notifications/read-all', { preHandler: [app.requireAuth] }, async () => {
+    const r = await db
+      .update(notification)
+      .set({ readAt: new Date() })
+      .where(isNull(notification.readAt))
+      .returning({ id: notification.id });
+    return { ok: true, marked: r.length };
+  });
 }

@@ -379,8 +379,7 @@ export async function runImapsync(
       else if (kind === 'skipped') bump(folderSkipped, currentFolder);
       else if (kind === 'copied') {
         bump(folderCopied, currentFolder);
-        folderBytes[currentFolder] =
-          (folderBytes[currentFolder] ?? 0) + extractMessageBytes(line);
+        folderBytes[currentFolder] = (folderBytes[currentFolder] ?? 0) + extractMessageBytes(line);
       }
     }
 

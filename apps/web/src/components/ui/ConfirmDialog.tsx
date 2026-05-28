@@ -115,11 +115,7 @@ export function ConfirmDialog({
               {resolvedCancelLabel}
             </button>
             {!isAlert && (
-              <button
-                onClick={() => onConfirm?.()}
-                disabled={busy}
-                className={confirmBtn}
-              >
+              <button onClick={() => onConfirm?.()} disabled={busy} className={confirmBtn}>
                 {busy && <Loader2 className="h-4 w-4 animate-spin" />}
                 {confirmLabel}
               </button>

@@ -159,9 +159,9 @@ describe('buildImapsyncArgs — throttle & cache toggles', () => {
 describe('buildImapsyncArgs — emailHeaderSettings (finding: wire app_setting → imapsync)', () => {
   it('does NOT add --regexhead when omitted or "default"', () => {
     expect(buildImapsyncArgs(baseInput)).not.toContain('--regexhead');
-    expect(
-      buildImapsyncArgs({ ...baseInput, emailHeaderSettings: 'default' }),
-    ).not.toContain('--regexhead');
+    expect(buildImapsyncArgs({ ...baseInput, emailHeaderSettings: 'default' })).not.toContain(
+      '--regexhead',
+    );
   });
 
   it('does NOT add --regexhead for "Keep All Headers" — that\'s imapsync\'s natural behaviour', () => {
@@ -240,9 +240,7 @@ describe('classifyImapsyncLine — per-folder stats parser', () => {
   it('prefers "skipped" over "copied" when both words appear', () => {
     // imapsync sometimes prints "not copied because already on host2".
     // Order in the classifier matters — we test it.
-    expect(classifyImapsyncLine('+ msg INBOX/1 {12} not copied: already on host2')).toBe(
-      'skipped',
-    );
+    expect(classifyImapsyncLine('+ msg INBOX/1 {12} not copied: already on host2')).toBe('skipped');
   });
 });
 

@@ -231,9 +231,7 @@ export async function migrationRoutes(app: FastifyInstance) {
     const [m] = await db.select().from(migration).where(eq(migration.id, id)).limit(1);
     if (!m) return reply.code(404).send({ error: 'Not found' });
 
-    const live = (['queued', 'scanning', 'running', 'paused'] as const).includes(
-      m.status as any,
-    );
+    const live = (['queued', 'scanning', 'running', 'paused'] as const).includes(m.status as any);
     if (live) {
       return reply.code(409).send({
         error: `Migration is ${m.status}. Stop it before deleting.`,

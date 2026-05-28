@@ -27,11 +27,7 @@ export async function resolveEmailHeaderSetting(
   // Fall back to global setting.
   const rows = await db.select().from(appSetting).where(eq(appSetting.key, 'emailHeaderSettings'));
   const v = rows[0]?.value;
-  if (
-    v === 'default' ||
-    v === 'Strip Custom Headers' ||
-    v === 'Keep All Headers'
-  ) {
+  if (v === 'default' || v === 'Strip Custom Headers' || v === 'Keep All Headers') {
     return v;
   }
   return 'default';

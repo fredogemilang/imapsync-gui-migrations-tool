@@ -135,8 +135,7 @@ export const api = {
         createdAt: string;
       }[]
     >('/api/notifications'),
-  unreadNotificationCount: () =>
-    request<{ count: number }>('/api/notifications/unread-count'),
+  unreadNotificationCount: () => request<{ count: number }>('/api/notifications/unread-count'),
   markNotificationRead: (id: string) =>
     request<{ ok: boolean }>(`/api/notifications/${id}/read`, { method: 'POST' }),
   markAllNotificationsRead: () =>

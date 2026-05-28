@@ -1,11 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { bulkMigration, bulkPair } from '../db/schema.js';
-import {
-  bulkPairSyncJobId,
-  bulkPairSyncQueue,
-  SYNC_INTERVALS,
-} from './queue.js';
+import { bulkPairSyncJobId, bulkPairSyncQueue, SYNC_INTERVALS } from './queue.js';
 
 /**
  * Bulk → per-pair sync orchestration.
@@ -71,7 +67,8 @@ export async function reconcileBulkPairSyncs(bulkId: string): Promise<{
 
   // We only schedule pairs that already finished — syncing an in-flight
   // pair would collide with its initial imapsync run.
-  const pairs = await db.select({ id: bulkPair.id, status: bulkPair.status })
+  const pairs = await db
+    .select({ id: bulkPair.id, status: bulkPair.status })
     .from(bulkPair)
     .where(eq(bulkPair.bulkId, bulkId));
 

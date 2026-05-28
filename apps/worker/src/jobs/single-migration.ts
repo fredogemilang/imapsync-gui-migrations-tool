@@ -257,9 +257,7 @@ export async function handleSingleMigration(job: Job<{ migrationId: string; resu
               migratedBytes: ev.bytes,
               status: 'completed',
             })
-            .where(
-              and(eq(migrationFolder.migrationId, id), eq(migrationFolder.name, ev.name)),
-            )
+            .where(and(eq(migrationFolder.migrationId, id), eq(migrationFolder.name, ev.name)))
             .catch(() => {});
         } else if (ev.kind === 'log') {
           log(ev.level, ev.message);
@@ -286,8 +284,8 @@ export async function handleSingleMigration(job: Job<{ migrationId: string; resu
               })
               .where(eq(migration.id, id))
               .then(() => {
-                void applyPostMigrationSync(id, settings as Record<string, unknown>).catch(
-                  (e) => console.error(`[single] applyPostMigrationSync(${id}) failed:`, e),
+                void applyPostMigrationSync(id, settings as Record<string, unknown>).catch((e) =>
+                  console.error(`[single] applyPostMigrationSync(${id}) failed:`, e),
                 );
                 void createNotification({
                   kind: 'success',

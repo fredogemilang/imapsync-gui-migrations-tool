@@ -316,10 +316,20 @@ function StatusBanner({ data, onView }: { data: any; onView: () => void }) {
   const cancelled = status === 'cancelled';
 
   const palette = live
-    ? { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800', accent: 'text-amber-500' }
+    ? {
+        bg: 'bg-amber-50',
+        border: 'border-amber-200',
+        text: 'text-amber-800',
+        accent: 'text-amber-500',
+      }
     : failed
       ? { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', accent: 'text-red-500' }
-      : { bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-700', accent: 'text-slate-500' };
+      : {
+          bg: 'bg-slate-50',
+          border: 'border-slate-200',
+          text: 'text-slate-700',
+          accent: 'text-slate-500',
+        };
 
   const Icon = live ? RefreshCw : failed ? XCircle : AlertTriangle;
   const title = live
@@ -338,7 +348,13 @@ function StatusBanner({ data, onView }: { data: any; onView: () => void }) {
         : 'Migration is not complete. Some stats below may be partial.';
 
   return (
-    <div className={cn('rounded-xl border p-4 md:p-5 flex items-start gap-3', palette.bg, palette.border)}>
+    <div
+      className={cn(
+        'rounded-xl border p-4 md:p-5 flex items-start gap-3',
+        palette.bg,
+        palette.border,
+      )}
+    >
       <Icon className={cn('h-5 w-5 shrink-0 mt-0.5', palette.accent, live && 'animate-spin')} />
       <div className="flex-1 min-w-0">
         <p className={cn('font-bold text-sm', palette.text)}>{title}</p>
@@ -376,18 +392,11 @@ function StatBadge({ value, label }: { value: string | number; label: string }) 
   );
 }
 
-
 // ---------------------------------------------------------------------------
 // Details Modal
 // ---------------------------------------------------------------------------
 
-function DetailsModal({
-  folders,
-  onClose,
-}: {
-  folders: any[];
-  onClose: () => void;
-}) {
+function DetailsModal({ folders, onClose }: { folders: any[]; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6">
       <div onClick={onClose} className="absolute inset-0 bg-slate-900/50 backdrop-blur-md" />
@@ -397,7 +406,13 @@ function DetailsModal({
           onClick={onClose}
           className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 transition-colors p-1.5 rounded-full hover:bg-slate-100 focus:outline-none"
         >
-          <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+          <svg
+            className="h-6 w-6"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            viewBox="0 0 24 24"
+          >
             <path d="M6 18L18 6M6 6l12 12" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
@@ -439,8 +454,7 @@ function DetailsModal({
                   // "everything not migrated/skipped" derivation only if the
                   // column is null (e.g. legacy row from before this feature
                   // landed) — newer rows ship `failedEmails`, even if zero.
-                  const failed =
-                    f.failedEmails ?? Math.max(0, f.totalEmails - migrated - skipped);
+                  const failed = f.failedEmails ?? Math.max(0, f.totalEmails - migrated - skipped);
                   return (
                     <tr
                       key={f.id ?? f.name}

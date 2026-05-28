@@ -767,8 +767,8 @@ function DetailsModal({
               <span className="font-extrabold italic text-blue-600">{pair.sourceUser}</span>.
             </p>
             <p className="text-primary/70 text-xs md:text-sm leading-relaxed">
-              Summary of all emails and structures found in the mailbox, ready to be migrated to
-              the destination server.
+              Summary of all emails and structures found in the mailbox, ready to be migrated to the
+              destination server.
             </p>
           </div>
           <div className="overflow-x-auto border border-slate-100 rounded-xl">
@@ -792,7 +792,10 @@ function DetailsModal({
                 {folders.map((f) => {
                   const empty = f.totalEmails === 0;
                   return (
-                    <tr key={f.name} className={cn('hover:bg-slate-50/50', empty && 'text-slate-400 italic')}>
+                    <tr
+                      key={f.name}
+                      className={cn('hover:bg-slate-50/50', empty && 'text-slate-400 italic')}
+                    >
                       <td className="py-3 px-4 font-semibold">{f.name}</td>
                       <td className="py-3 px-4 text-right">{f.totalEmails.toLocaleString()}</td>
                       <td className="py-3 px-4 text-right">

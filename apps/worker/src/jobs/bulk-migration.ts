@@ -66,9 +66,7 @@ async function applyPostBulkSync(bulkId: string): Promise<void> {
             opts: { removeOnComplete: 20, removeOnFail: 50 },
           },
         )
-        .catch((e: unknown) =>
-          console.error(`[bulk-pair-sync] schedule pair ${p.id} failed:`, e),
-        ),
+        .catch((e: unknown) => console.error(`[bulk-pair-sync] schedule pair ${p.id} failed:`, e)),
     ),
   );
 }

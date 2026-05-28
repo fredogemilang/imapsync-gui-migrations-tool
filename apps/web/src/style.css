@@ -15,8 +15,7 @@
   --primary-container: #263299;
   --surf: #ffffff;
   --surf-border: rgba(255, 255, 255, 0.5);
-  --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.05),
-    0 8px 10px -6px rgba(0, 0, 0, 0.01);
+  --shadow-card: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.01);
 }
 
 .dark {
@@ -30,8 +29,7 @@
   /* Surfaces become flat near-black with subtle white borders */
   --surf: #121212;
   --surf-border: rgba(255, 255, 255, 0.08);
-  --shadow-card: 0 10px 30px -5px rgba(0, 0, 0, 0.5),
-    0 8px 15px -6px rgba(0, 0, 0, 0.3);
+  --shadow-card: 0 10px 30px -5px rgba(0, 0, 0, 0.5), 0 8px 15px -6px rgba(0, 0, 0, 0.3);
 }
 
 @theme {

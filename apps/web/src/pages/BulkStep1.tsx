@@ -118,7 +118,9 @@ export function BulkStep1() {
 
   // Validation modal
   const [validating, setValidating] = useState(false);
-  const [validationLogs, setValidationLogs] = useState<{ text: string; kind: 'info' | 'error' | 'success' }[]>([]);
+  const [validationLogs, setValidationLogs] = useState<
+    { text: string; kind: 'info' | 'error' | 'success' }[]
+  >([]);
   /** When validation finishes with failures we keep the modal open so the
    *  user can read the log. `closable` flips on so the X / Close buttons
    *  appear; `submittedOnSuccess` flips when the bulk migration actually
@@ -126,7 +128,9 @@ export function BulkStep1() {
   const [validationDone, setValidationDone] = useState<'idle' | 'failed' | 'success'>('idle');
   /** Per-row validation errors keyed by mailbox.id. Drives the red ring
    *  highlight on failed rows in the Access Data table. */
-  const [rowErrors, setRowErrors] = useState<Record<string, { source?: string; target?: string }>>({});
+  const [rowErrors, setRowErrors] = useState<Record<string, { source?: string; target?: string }>>(
+    {},
+  );
 
   useSidebarTitle('Bulk Migration');
   useSidebarIcon(Layers);

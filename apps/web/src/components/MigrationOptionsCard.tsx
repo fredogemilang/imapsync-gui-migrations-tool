@@ -194,9 +194,7 @@ export function MigrationOptionsCard({
               <select
                 value={selectedInterval}
                 disabled={busy}
-                onChange={(e) =>
-                  onIntervalChange(e.target.value as 'daily' | 'weekly' | 'monthly')
-                }
+                onChange={(e) => onIntervalChange(e.target.value as 'daily' | 'weekly' | 'monthly')}
                 className="bg-white border border-slate-200/80 rounded-lg text-primary text-[14px] py-2 px-3 disabled:opacity-50"
               >
                 <option value="daily">Every day</option>

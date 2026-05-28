@@ -21,12 +21,7 @@ import { createNotification } from '../notifications.js';
  */
 
 const SINGLE_TERMINAL = ['completed', 'failed', 'cancelled'] as const;
-const BULK_TERMINAL = [
-  'completed',
-  'completed_with_errors',
-  'failed',
-  'cancelled',
-] as const;
+const BULK_TERMINAL = ['completed', 'completed_with_errors', 'failed', 'cancelled'] as const;
 
 export async function handleRetentionSweep(): Promise<{
   skipped?: string;

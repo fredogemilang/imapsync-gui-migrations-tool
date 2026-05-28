@@ -97,13 +97,13 @@ If schema is out of sync the worker / API will throw `column "..." does not exis
 
 The worker registers five BullMQ workers + one repeatable scheduler. You'll see these in the worker logs on boot:
 
-| Queue | Purpose | Concurrency |
-|---|---|---|
-| `migration` | Single migration initial run (scan + imapsync) | `WORKER_CONCURRENCY` |
-| `bulk-migration` | Bulk parent job (fans out per pair) | 1 (internal fan-out) |
-| `sync` | Single migration delta sync (Auto Sync / Backup Mode / Sync Now) | `WORKER_CONCURRENCY` |
-| `bulk-pair-sync` | Per-pair delta sync for bulk migrations | `WORKER_CONCURRENCY` |
-| `retention` | Daily cleanup sweep | 1 |
+| Queue            | Purpose                                                          | Concurrency          |
+| ---------------- | ---------------------------------------------------------------- | -------------------- |
+| `migration`      | Single migration initial run (scan + imapsync)                   | `WORKER_CONCURRENCY` |
+| `bulk-migration` | Bulk parent job (fans out per pair)                              | 1 (internal fan-out) |
+| `sync`           | Single migration delta sync (Auto Sync / Backup Mode / Sync Now) | `WORKER_CONCURRENCY` |
+| `bulk-pair-sync` | Per-pair delta sync for bulk migrations                          | `WORKER_CONCURRENCY` |
+| `retention`      | Daily cleanup sweep                                              | 1                    |
 
 Boot also resets stale `migration.syncRunning=true` flags (which can be left by a SIGKILL mid-sync) and sweeps orphan password tempfiles from previous crashes.
 
@@ -145,11 +145,11 @@ For bulk migrations, the bulk parent job spawns per-pair imapsync workers up to 
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| `column "..." does not exist` | Schema out of sync | `docker compose exec api pnpm run db:push` |
-| `Route DELETE:/api/... not found` | API container hasn't picked up new code (Windows + Docker Desktop file-watch quirk) | `docker compose restart api` |
-| `Body cannot be empty when content-type is set to 'application/json'` | Old API client cached in browser | Hard reload (Ctrl+Shift+R) |
-| Bell shows old notifications after delete | Cascade FK should clean them; verify `DELETE` returned 200 | Manual: `DELETE FROM notification WHERE migration_id IS NULL AND bulk_id IS NULL AND read_at IS NOT NULL` |
-| Auto Sync stuck — POST /sync/now returns 409 | `migration.syncRunning=true` from a SIGKILLed prior tick | `docker compose restart worker` (boot sweep auto-resets) |
-| Bulk migration progress page silent | SSE connection may have stalled — usually only happens with reverse-proxy buffering | Ensure Traefik / nginx has `X-Accel-Buffering: no` honored (already set by API response headers) |
+| Symptom                                                               | Likely cause                                                                        | Fix                                                                                                       |
+| --------------------------------------------------------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| `column "..." does not exist`                                         | Schema out of sync                                                                  | `docker compose exec api pnpm run db:push`                                                                |
+| `Route DELETE:/api/... not found`                                     | API container hasn't picked up new code (Windows + Docker Desktop file-watch quirk) | `docker compose restart api`                                                                              |
+| `Body cannot be empty when content-type is set to 'application/json'` | Old API client cached in browser                                                    | Hard reload (Ctrl+Shift+R)                                                                                |
+| Bell shows old notifications after delete                             | Cascade FK should clean them; verify `DELETE` returned 200                          | Manual: `DELETE FROM notification WHERE migration_id IS NULL AND bulk_id IS NULL AND read_at IS NOT NULL` |
+| Auto Sync stuck — POST /sync/now returns 409                          | `migration.syncRunning=true` from a SIGKILLed prior tick                            | `docker compose restart worker` (boot sweep auto-resets)                                                  |
+| Bulk migration progress page silent                                   | SSE connection may have stalled — usually only happens with reverse-proxy buffering | Ensure Traefik / nginx has `X-Accel-Buffering: no` honored (already set by API response headers)          |

@@ -341,10 +341,7 @@ export function MigrationStep3() {
         </button>
         {detailsOpen && (
           <div className="p-5 border-t border-slate-100/80 bg-white space-y-3.5 text-[13px] font-semibold text-primary/80">
-            <DetailRow
-              label="Folder"
-              value={folder ? `${folder.index}/${folder.total}` : '—'}
-            />
+            <DetailRow label="Folder" value={folder ? `${folder.index}/${folder.total}` : '—'} />
             <DetailRow label="Current Folder" value={folder?.name ?? '—'} />
             <DetailRow label="Folder Action" value={folderAction} />
 
@@ -352,14 +349,8 @@ export function MigrationStep3() {
               Migration Speed
             </div>
 
-            <DetailRow
-              label="Emails per Second"
-              value={speed.emailsPerSec.toFixed(2)}
-            />
-            <DetailRow
-              label="Data Volume per Second"
-              value={formatBytes(speed.bytesPerSec)}
-            />
+            <DetailRow label="Emails per Second" value={speed.emailsPerSec.toFixed(2)} />
+            <DetailRow label="Data Volume per Second" value={formatBytes(speed.bytesPerSec)} />
             <div className="flex items-center justify-between">
               <span className="text-slate-400">Mailserver Speed</span>
               <MailserverSpeedBadge speed={mailserverSpeed} />

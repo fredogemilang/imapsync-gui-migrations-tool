@@ -135,9 +135,10 @@ export function BulkStep3() {
   const totalCount = pairs.length;
   // Overall progress = average per-pair percent (matches mockup's
   // "stage shifts as each mailbox advances" feel).
-  const overallPercent = totalCount === 0
-    ? 0
-    : Math.round(pairs.reduce((a, p) => a + (p.progressPercent ?? 0), 0) / totalCount);
+  const overallPercent =
+    totalCount === 0
+      ? 0
+      : Math.round(pairs.reduce((a, p) => a + (p.progressPercent ?? 0), 0) / totalCount);
 
   const bulkStatus = snapshot?.status ?? 'queued';
   const completed = bulkStatus === 'completed' || bulkStatus === 'completed_with_errors';
@@ -159,9 +160,7 @@ export function BulkStep3() {
   const filtered = pairs.filter((p) => {
     if (!search) return true;
     const q = search.toLowerCase();
-    return (
-      p.sourceUsername.toLowerCase().includes(q) || p.targetUsername.toLowerCase().includes(q)
-    );
+    return p.sourceUsername.toLowerCase().includes(q) || p.targetUsername.toLowerCase().includes(q);
   });
 
   // ---- Stop / Resume -----------------------------------------------------
@@ -448,7 +447,12 @@ function StatusBadge({ status }: { status: string }) {
   const meta = (() => {
     switch (status) {
       case 'completed':
-        return { label: 'Completed', dot: 'bg-emerald-500', text: 'text-emerald-600', pulse: false };
+        return {
+          label: 'Completed',
+          dot: 'bg-emerald-500',
+          text: 'text-emerald-600',
+          pulse: false,
+        };
       case 'failed':
         return { label: 'Failed', dot: 'bg-red-500', text: 'text-red-600', pulse: false };
       case 'cancelled':
@@ -464,9 +468,7 @@ function StatusBadge({ status }: { status: string }) {
   })();
   return (
     <span className={cn('text-[11px] font-bold flex items-center gap-1.5', meta.text)}>
-      <span
-        className={cn('w-1.5 h-1.5 rounded-full', meta.dot, meta.pulse && 'animate-pulse')}
-      />{' '}
+      <span className={cn('w-1.5 h-1.5 rounded-full', meta.dot, meta.pulse && 'animate-pulse')} />{' '}
       {meta.label}
     </span>
   );

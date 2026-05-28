@@ -159,8 +159,7 @@ export function YourBulkMigration() {
     const q = search.toLowerCase();
     return pairs.filter(
       (p) =>
-        p.sourceUsername.toLowerCase().includes(q) ||
-        p.targetUsername.toLowerCase().includes(q),
+        p.sourceUsername.toLowerCase().includes(q) || p.targetUsername.toLowerCase().includes(q),
     );
   }, [data, search]);
 
@@ -263,10 +262,7 @@ export function YourBulkMigration() {
                   value={`${stats.completedPairs}/${stats.totalPairs}`}
                   label={stats.totalPairs === 1 ? 'mailbox completed' : 'mailboxes completed'}
                 />
-                <StatBadge
-                  value={stats.migratedEmails.toLocaleString()}
-                  label="emails migrated"
-                />
+                <StatBadge value={stats.migratedEmails.toLocaleString()} label="emails migrated" />
                 {stats.failedPairs > 0 && (
                   <div className="flex items-center gap-3">
                     <div className="bg-red-500 rounded-full p-0.5 flex items-center justify-center shrink-0">
@@ -330,12 +326,7 @@ export function YourBulkMigration() {
               </thead>
               <tbody className="divide-y divide-slate-50 text-[13px]">
                 {filtered.map((p, idx) => (
-                  <PairRow
-                    key={p.id}
-                    index={idx + 1}
-                    pair={p}
-                    onDetails={() => setDetailsFor(p)}
-                  />
+                  <PairRow key={p.id} index={idx + 1} pair={p} onDetails={() => setDetailsFor(p)} />
                 ))}
                 {filtered.length === 0 && (
                   <tr>
@@ -361,17 +352,15 @@ export function YourBulkMigration() {
       />
 
       {/* Modals */}
-      {detailsFor && (
-        <PairDetailsModal pair={detailsFor} onClose={() => setDetailsFor(null)} />
-      )}
+      {detailsFor && <PairDetailsModal pair={detailsFor} onClose={() => setDetailsFor(null)} />}
 
       <ConfirmDialog
         open={deleteConfirmOpen}
         title="Delete this bulk migration?"
         description={
           <>
-            This permanently removes the bulk migration <strong>and all its mailbox pairs</strong>
-            . This cannot be undone.
+            This permanently removes the bulk migration <strong>and all its mailbox pairs</strong>.
+            This cannot be undone.
           </>
         }
         variant="danger"
@@ -427,13 +416,7 @@ function StatBadge({ value, label }: { value: string | number; label: string }) 
   );
 }
 
-function StatusBanner({
-  data,
-  onView,
-}: {
-  data: BulkData;
-  onView: () => void;
-}) {
+function StatusBanner({ data, onView }: { data: BulkData; onView: () => void }) {
   const status = data.status;
   if (status === 'completed') return null;
 
@@ -443,12 +426,27 @@ function StatusBanner({
   const partial = status === 'completed_with_errors';
 
   const palette = live
-    ? { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800', accent: 'text-amber-500' }
+    ? {
+        bg: 'bg-amber-50',
+        border: 'border-amber-200',
+        text: 'text-amber-800',
+        accent: 'text-amber-500',
+      }
     : failed
       ? { bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-700', accent: 'text-red-500' }
       : partial
-        ? { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-800', accent: 'text-amber-500' }
-        : { bg: 'bg-slate-50', border: 'border-slate-200', text: 'text-slate-700', accent: 'text-slate-500' };
+        ? {
+            bg: 'bg-amber-50',
+            border: 'border-amber-200',
+            text: 'text-amber-800',
+            accent: 'text-amber-500',
+          }
+        : {
+            bg: 'bg-slate-50',
+            border: 'border-slate-200',
+            text: 'text-slate-700',
+            accent: 'text-slate-500',
+          };
 
   const Icon = live ? RefreshCw : failed ? XCircle : AlertTriangle;
   const title = live
@@ -500,15 +498,7 @@ function StatusBanner({
   );
 }
 
-function PairRow({
-  index,
-  pair,
-  onDetails,
-}: {
-  index: number;
-  pair: Pair;
-  onDetails: () => void;
-}) {
+function PairRow({ index, pair, onDetails }: { index: number; pair: Pair; onDetails: () => void }) {
   const pct = pair.progressPercent ?? 0;
   const status = pair.status ?? 'pending';
   const bar =
@@ -569,7 +559,12 @@ function PairStatusBadge({ status }: { status: string }) {
   const meta = (() => {
     switch (status) {
       case 'completed':
-        return { label: 'Completed', dot: 'bg-emerald-500', text: 'text-emerald-600', pulse: false };
+        return {
+          label: 'Completed',
+          dot: 'bg-emerald-500',
+          text: 'text-emerald-600',
+          pulse: false,
+        };
       case 'failed':
         return { label: 'Failed', dot: 'bg-red-500', text: 'text-red-600', pulse: false };
       case 'cancelled':
@@ -591,13 +586,7 @@ function PairStatusBadge({ status }: { status: string }) {
   );
 }
 
-function PairDetailsModal({
-  pair,
-  onClose,
-}: {
-  pair: Pair;
-  onClose: () => void;
-}) {
+function PairDetailsModal({ pair, onClose }: { pair: Pair; onClose: () => void }) {
   // ESC closes
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -653,7 +642,8 @@ function PairDetailsModal({
             </KV>
             <KV label="Sync / Backup">
               <span className="text-primary text-xs font-bold">
-                {pair.syncEnabled ? '✓ Sync' : '— Sync'} · {pair.backupEnabled ? '✓ Backup' : '— Backup'}
+                {pair.syncEnabled ? '✓ Sync' : '— Sync'} ·{' '}
+                {pair.backupEnabled ? '✓ Backup' : '— Backup'}
               </span>
             </KV>
           </div>
@@ -920,9 +910,7 @@ function BulkSettingsCard({
               {syncMsg.text}
             </p>
           )}
-          {error && (
-            <p className="text-[12px] font-bold text-red-700 text-center -mt-2">{error}</p>
-          )}
+          {error && <p className="text-[12px] font-bold text-red-700 text-center -mt-2">{error}</p>}
         </div>
 
         {/* Advanced Settings accordion */}

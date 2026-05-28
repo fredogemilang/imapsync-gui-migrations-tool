@@ -92,7 +92,11 @@ export function MigrationStep2() {
       title={blocked ? 'Cannot start — target has insufficient disk space' : undefined}
       className="w-full max-w-4xl bg-primary-container hover:bg-primary-dark text-white rounded-lg py-3.5 font-bold text-[15px] shadow-md disabled:opacity-60 disabled:cursor-not-allowed"
     >
-      {creating ? 'Starting…' : blocked ? 'Cannot start — insufficient disk space' : 'Start Your Migration'}
+      {creating
+        ? 'Starting…'
+        : blocked
+          ? 'Cannot start — insufficient disk space'
+          : 'Start Your Migration'}
     </button>,
     [creating, blocked, source, target, settings],
   );
@@ -171,9 +175,10 @@ function targetStatusItems(inspect: Inspect | null, incomingBytes: number): Stat
     // 0 emails is fine regardless of how many (empty) folders exist.
     items.push({
       kind: 'ok',
-      text: inspect.folderCount <= 1
-        ? 'Account is empty'
-        : `Account contains 0 emails in ${inspect.folderCount} folders`,
+      text:
+        inspect.folderCount <= 1
+          ? 'Account is empty'
+          : `Account contains 0 emails in ${inspect.folderCount} folders`,
     });
   } else {
     items.push({

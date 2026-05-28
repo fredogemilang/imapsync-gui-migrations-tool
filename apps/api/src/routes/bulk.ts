@@ -36,10 +36,7 @@ const CreateBulkBody = z.object({
 
 export async function bulkRoutes(app: FastifyInstance) {
   app.get('/api/bulk-migrations', { preHandler: [app.requireAuth] }, async () => {
-    const bulks = await db
-      .select()
-      .from(bulkMigration)
-      .orderBy(desc(bulkMigration.createdAt));
+    const bulks = await db.select().from(bulkMigration).orderBy(desc(bulkMigration.createdAt));
 
     // Enrich each bulk row with its pair count + how many have completed
     // so the Overview can render a "3/10 completed" hint without an N+1

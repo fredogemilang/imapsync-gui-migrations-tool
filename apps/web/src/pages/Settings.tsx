@@ -122,9 +122,7 @@ export function Settings() {
       <section className="space-y-4">
         <h3 className="text-primary-dark font-extrabold text-lg">Migration Settings:</h3>
         <div className="space-y-3">
-          <DropdownWithInfo
-            tooltip="How many mailboxes can be migrated at the exact same time. Higher values speed up large bulk migrations but require higher server bandwidth."
-          >
+          <DropdownWithInfo tooltip="How many mailboxes can be migrated at the exact same time. Higher values speed up large bulk migrations but require higher server bandwidth.">
             <CustomDropdown
               label="Number of Simultaneous Migrations"
               value={s.simultaneousMigrations}
@@ -139,9 +137,7 @@ export function Settings() {
             />
           </DropdownWithInfo>
 
-          <DropdownWithInfo
-            tooltip="Automatically clear migration logs and temporary databases after the specified duration has passed since completion."
-          >
+          <DropdownWithInfo tooltip="Automatically clear migration logs and temporary databases after the specified duration has passed since completion.">
             <CustomDropdown
               label="Delete Finished Migrations After"
               value={s.retentionDays}
@@ -156,9 +152,7 @@ export function Settings() {
             />
           </DropdownWithInfo>
 
-          <DropdownWithInfo
-            tooltip="Configure how metadata headers (e.g. Received, X-Mailer, SPF results) are processed and preserved during transmission."
-          >
+          <DropdownWithInfo tooltip="Configure how metadata headers (e.g. Received, X-Mailer, SPF results) are processed and preserved during transmission.">
             <CustomDropdown
               label="Email Header Settings"
               value={s.emailHeaderSettings}
@@ -199,13 +193,7 @@ export function Settings() {
 
 /** Wraps a dropdown with the blue (i) tooltip badge on the right.
  *  Tooltip uses Tailwind `group-hover` so it works without JS state. */
-function DropdownWithInfo({
-  children,
-  tooltip,
-}: {
-  children: React.ReactNode;
-  tooltip: string;
-}) {
+function DropdownWithInfo({ children, tooltip }: { children: React.ReactNode; tooltip: string }) {
   return (
     <div className="flex items-center gap-4">
       <div className="flex-1 min-w-0">{children}</div>
