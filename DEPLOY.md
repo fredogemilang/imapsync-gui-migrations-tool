@@ -76,7 +76,6 @@ If schema is out of sync the worker / API will throw `column "..." does not exis
    MASTER_KEY=<64 hex chars>                 # openssl rand -hex 32 — BACK THIS UP
    ADMIN_EMAIL=admin@yourdomain.com
    ADMIN_INITIAL_PASSWORD=<temp, change on first login>
-   PUBLIC_DOMAIN=mailmigrate.yourdomain.com
    NODE_ENV=production
    ```
 
@@ -84,18 +83,41 @@ If schema is out of sync the worker / API will throw `column "..." does not exis
 
    ```
    # Set ONLY if web is hosted on a different domain than api (split-domain).
-   # Default same-origin via Traefik PathPrefix works for 99% of deploys.
-   # VITE_API_BASE=https://api.yourdomain.com   # build arg (also pass at build)
+   # Default same-origin via Dokploy domain routing works for 99% of deploys.
+   # VITE_API_BASE=https://api.yourdomain.com   # build arg
    # WEB_ORIGIN=https://app.yourdomain.com      # API CORS allow
    ```
 
    **Do NOT set** — auto-injected by compose, would only confuse:
    - `POSTGRES_HOST` / `REDIS_HOST` (compose sets these to `postgres` / `redis`)
-   - `API_PORT` / `WEB_PORT` (internal ports, fixed by Dockerfile EXPOSE)
+   - `API_PORT` (default 3000, fixed by Dockerfile EXPOSE)
 
-4. **Traefik / domain**:
-   - In Dokploy, point the app's domain to `PUBLIC_DOMAIN`.
-   - Compose labels already configure Traefik with `letsencrypt` cert resolver. If your Dokploy Traefik uses a different name, edit the labels in `docker-compose.prod.yml`.
+4. **Configure domains in Dokploy** — open the app's **Domains** tab and add
+   TWO entries pointing to the SAME hostname but DIFFERENT services + ports.
+   Traefik routes incoming requests to the right container based on the
+   path prefix:
+
+   | Field          | Web (frontend)    | API (backend)              |
+   | -------------- | ----------------- | -------------------------- |
+   | Service Name   | `web`             | `api`                      |
+   | Host           | `your-domain.com` | `your-domain.com` _(same)_ |
+   | Path           | `/`               | `/api`                     |
+   | Container Port | `80` _(nginx)_    | `3000` _(Fastify)_         |
+   | Strip Path     | OFF               | OFF                        |
+   | HTTPS          | ON                | ON                         |
+   | Cert Resolver  | letsencrypt       | letsencrypt                |
+
+   > **Important**: Leave **Strip Path OFF** for the api entry — the api
+   > server expects requests at `/api/<route>`, so stripping `/api`
+   > would break every endpoint.
+
+   Result:
+   - `https://your-domain.com/migrations` → web (React SPA via nginx)
+   - `https://your-domain.com/api/migrations` → api (Fastify)
+   - `https://your-domain.com/api/health` → api healthcheck
+
+   No Traefik labels in the compose file — Dokploy injects them based on
+   the entries above.
 
 5. **First deploy**:
    - Dokploy builds + runs all services.

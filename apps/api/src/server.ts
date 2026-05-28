@@ -40,7 +40,7 @@ async function main() {
   //   - dev: reflect any origin (Vite dev server may serve from various
   //     ports / hostnames during local work)
   //   - prod default: no CORS — same-origin only (web + api share the
-  //     Traefik-routed PUBLIC_DOMAIN)
+  //     Traefik-routed domain configured in Dokploy)
   //   - prod split-domain: set WEB_ORIGIN to e.g. https://app.example.com
   //     when web frontend lives on a different host than this api
   await app.register(cors, {

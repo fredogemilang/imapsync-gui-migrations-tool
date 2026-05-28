@@ -47,12 +47,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-    labels:
-      - 'traefik.enable=true'
-      - 'traefik.http.routers.emt-api.rule=Host(`${PUBLIC_DOMAIN}`) && PathPrefix(`/api`)'
-      - 'traefik.http.routers.emt-api.entrypoints=websecure'
-      - 'traefik.http.routers.emt-api.tls.certresolver=letsencrypt'
-      - 'traefik.http.services.emt-api.loadbalancer.server.port=3000'
+    # Domain + TLS routing is configured via Dokploy's Domain UI per
+    # service (see DEPLOY.md "Configure domains in Dokploy"). No Traefik
+    # labels needed in this compose file — Dokploy injects them based on
+    # what you set in the UI.
 
   worker:
     build:
@@ -86,17 +84,13 @@ services:
       target: prod
       args:
         # Empty = same-origin (recommended): browser calls /api/* on the
-        # same PUBLIC_DOMAIN, Traefik routes /api PathPrefix to api.
-        # Override only for split-domain deploys (web on app.example.com,
-        # api on api.example.com) — set the api's full origin here.
+        # same domain it loaded from. Dokploy's domain UI routes /api
+        # to the api service. Override only for split-domain deploys
+        # (web on app.example.com, api on api.example.com) — set the
+        # api's full origin here.
         VITE_API_BASE: ${VITE_API_BASE:-}
     restart: always
-    labels:
-      - 'traefik.enable=true'
-      - 'traefik.http.routers.emt-web.rule=Host(`${PUBLIC_DOMAIN}`)'
-      - 'traefik.http.routers.emt-web.entrypoints=websecure'
-      - 'traefik.http.routers.emt-web.tls.certresolver=letsencrypt'
-      - 'traefik.http.services.emt-web.loadbalancer.server.port=80'
+    # Domain routing is set in Dokploy's Domain UI (see DEPLOY.md).
 
 volumes:
   pgdata:
