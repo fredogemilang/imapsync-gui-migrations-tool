@@ -91,6 +91,28 @@ export function extractMessageBytes(line: string): number {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
+/**
+ * True when an imapsync output line mentions the word "error" / "failed" /
+ * "cannot" but is actually a benign summary line, not a real failure.
+ *
+ * Examples that should NOT be classified as errors:
+ *   "Detected 0 errors"
+ *   "0/50 nb_errors/max_errors"
+ *   "Exiting with return value 0 (EX_OK: successful termination)"
+ *
+ * Pulled out as a named function so the heuristic is unit-testable and
+ * easy to extend when imapsync output evolves.
+ */
+export function isBenignErrorMention(line: string): boolean {
+  // Clean exit code line — `EX_OK` is imapsync's name for exit 0.
+  if (/EX_OK|return\s+value\s+0\b/i.test(line)) return true;
+  // "Detected 0 errors" — literal zero.
+  if (/Detected\s+0\s+errors?\b/i.test(line)) return true;
+  // "0/N nb_errors/max_errors" — the count-vs-cap label, with count 0.
+  if (/\b0\/\d+\s+nb_errors\b/i.test(line)) return true;
+  return false;
+}
+
 export type LineClassification = 'copied' | 'skipped' | 'failed' | null;
 export function classifyImapsyncLine(line: string): LineClassification {
   const hasMsgMarker = /\bmsg\s+\S+[/:]\d+/i.test(line) || /\{\d+\}/.test(line);
@@ -390,7 +412,14 @@ export async function runImapsync(
       if (sizeMatch) bytesSinceLast += Number(sizeMatch[1]);
     }
 
-    if (/error|failed|cannot/i.test(line)) {
+    // Classify as error only when the line looks like a real failure.
+    // imapsync's normal end-of-run summary contains substrings like
+    //   "Detected 0 errors"           — info, zero actual errors
+    //   "0/50 nb_errors/max_errors"   — just a label with zero
+    //   "Exiting with return value 0 (EX_OK: ...)"  — clean exit
+    // The previous /error|failed|cannot/i caught all of those and painted
+    // benign lines red in the Sync History UI. Filter them out explicitly.
+    if (/error|failed|cannot/i.test(line) && !isBenignErrorMention(line)) {
       onEvent({ kind: 'log', level: 'error', message: line.trim() });
     }
 

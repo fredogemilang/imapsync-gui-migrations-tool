@@ -4,6 +4,7 @@ import {
   classifyImapsyncLine,
   daysSince,
   extractMessageBytes,
+  isBenignErrorMention,
   type BuildArgsInput,
 } from './imapsync.js';
 
@@ -282,5 +283,26 @@ describe('daysSince', () => {
   it('clamps negative (future date) to 0', () => {
     const now = new Date('2026-05-27T00:00:00Z').getTime();
     expect(daysSince(new Date('2026-12-01T00:00:00Z'), now)).toBe(0);
+  });
+});
+
+describe('isBenignErrorMention — distinguishes summary lines from real errors', () => {
+  it('treats "Detected 0 errors" as benign', () => {
+    expect(isBenignErrorMention('Detected 0 errors')).toBe(true);
+  });
+  it('treats EX_OK exit lines as benign', () => {
+    expect(
+      isBenignErrorMention(
+        'Exiting with return value 0 (EX_OK: successful termination) 0/50 nb_errors/max_errors PID 66',
+      ),
+    ).toBe(true);
+  });
+  it('treats "0/N nb_errors/max_errors" labels as benign', () => {
+    expect(isBenignErrorMention('Counters: 0/50 nb_errors/max_errors')).toBe(true);
+  });
+  it('does NOT swallow real error mentions', () => {
+    expect(isBenignErrorMention('Error msg INBOX/123 cannot copy')).toBe(false);
+    expect(isBenignErrorMention('Detected 3 errors')).toBe(false);
+    expect(isBenignErrorMention('5/50 nb_errors/max_errors — non-zero')).toBe(false);
   });
 });

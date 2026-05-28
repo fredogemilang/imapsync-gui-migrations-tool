@@ -76,8 +76,10 @@ services:
       target: dev
     restart: unless-stopped
     env_file: .env
-    environment:
-      VITE_API_BASE: http://api:3000
+    # VITE_API_BASE is read from .env (default: http://localhost:3000).
+    # IMPORTANT: this URL is used by the BROWSER, not the web container —
+    # so a docker-internal hostname like `http://api:3000` won't work
+    # (browser can't resolve compose service names).
     ports:
       - '5173:5173'
     volumes:
