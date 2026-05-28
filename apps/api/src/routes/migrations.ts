@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { desc, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { imapAccount, migration, migrationFolder, migrationLog } from '../db/schema.js';
+import { imapAccount, migration, migrationFolder, migrationLog, syncRun } from '../db/schema.js';
 import { encrypt } from '../lib/crypto.js';
 import { migrationQueue, syncQueue, syncJobId, SYNC_INTERVALS } from '../lib/queue.js';
 import { redis } from '../lib/redis.js';
@@ -388,6 +388,41 @@ export async function migrationRoutes(app: FastifyInstance) {
       .limit(200);
     return rows;
   });
+
+  // -------- Sync history --------------------------------------------------
+  // List of past sync runs for one migration, newest first. Capped at 50 to
+  // keep payload small — the YourMigration UI shows them in a scrollable
+  // list and rarely needs more (older history is still queryable manually
+  // if we ever need it). Each entry includes status, trigger, timestamps
+  // and per-run totals — enough to render the row without fetching logs.
+  app.get('/api/migrations/:id/sync-runs', { preHandler: [app.requireAuth] }, async (req) => {
+    const id = (req.params as any).id as string;
+    const rows = await db
+      .select()
+      .from(syncRun)
+      .where(eq(syncRun.migrationId, id))
+      .orderBy(desc(syncRun.startedAt))
+      .limit(50);
+    return rows;
+  });
+
+  // Logs for one sync run. We scope by both migrationId AND syncRunId so a
+  // crafted URL can't pull logs across migrations. Limit 500 — sync runs
+  // are short, this is plenty.
+  app.get(
+    '/api/migrations/:id/sync-runs/:runId/logs',
+    { preHandler: [app.requireAuth] },
+    async (req) => {
+      const { id, runId } = req.params as any;
+      const rows = await db
+        .select()
+        .from(migrationLog)
+        .where(and(eq(migrationLog.migrationId, id), eq(migrationLog.syncRunId, runId)))
+        .orderBy(desc(migrationLog.ts))
+        .limit(500);
+      return rows;
+    },
+  );
 
   // SSE progress stream
   app.get('/api/migrations/:id/events', { preHandler: [app.requireAuth] }, async (req, reply) => {

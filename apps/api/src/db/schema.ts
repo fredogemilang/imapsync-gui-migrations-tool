@@ -91,16 +91,6 @@ export const migrationFolder = pgTable('migration_folder', {
   status: text('status').notNull().default('pending'),
 });
 
-export const migrationLog = pgTable('migration_log', {
-  id: serial('id').primaryKey(),
-  migrationId: uuid('migration_id')
-    .notNull()
-    .references(() => migration.id, { onDelete: 'cascade' }),
-  ts: timestamp('ts', { withTimezone: true }).defaultNow().notNull(),
-  level: text('level').notNull().default('info'),
-  message: text('message').notNull(),
-});
-
 export const bulkMigration = pgTable('bulk_migration', {
   id: uuid('id').defaultRandom().primaryKey(),
   sourceHost: text('source_host').notNull(),
@@ -136,6 +126,75 @@ export const bulkPair = pgTable('bulk_pair', {
   migratedEmails: integer('migrated_emails').notNull().default(0),
   totalEmails: integer('total_emails').notNull().default(0),
   error: text('error'),
+});
+
+/**
+ * One row per sync run (delta sync — single migration or bulk pair —
+ * whether triggered by Auto Sync, Backup Mode, or one-off Sync Now).
+ *
+ * The UI's "Sync History" panel queries this table to render a list of
+ * past runs with status, duration, and trigger. Per-run log lines are
+ * fetched separately via migrationLog.syncRunId / bulkPairLog.syncRunId.
+ *
+ * Exactly one of (migrationId) OR (bulkId + bulkPairId) is set — a sync
+ * run belongs to either a single migration or a bulk pair. Cascade FK so
+ * deleting the parent purges all runs (and their logs in turn).
+ *
+ * Declared AFTER bulkPair so the FKs resolve without forward refs.
+ */
+export const syncRun = pgTable('sync_run', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  migrationId: uuid('migration_id').references(() => migration.id, { onDelete: 'cascade' }),
+  bulkId: uuid('bulk_id').references(() => bulkMigration.id, { onDelete: 'cascade' }),
+  bulkPairId: integer('bulk_pair_id').references(() => bulkPair.id, { onDelete: 'cascade' }),
+  /** 'auto' | 'backup' | 'manual' — derived from migration/bulk sync state. */
+  trigger: text('trigger').notNull().default('auto'),
+  /** 'running' | 'success' | 'failed' */
+  status: text('status').notNull().default('running'),
+  startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  /** Counters aggregated from imapsync's per-folder stats during the run.
+   *  Updated incrementally as folder-stats events arrive, then finalised
+   *  on success/failure. Failed runs leave whatever was tallied so far. */
+  migratedEmails: integer('migrated_emails').notNull().default(0),
+  migratedBytes: bigint('migrated_bytes', { mode: 'number' }).notNull().default(0),
+  errorMessage: text('error_message'),
+});
+
+export const migrationLog = pgTable('migration_log', {
+  id: serial('id').primaryKey(),
+  migrationId: uuid('migration_id')
+    .notNull()
+    .references(() => migration.id, { onDelete: 'cascade' }),
+  ts: timestamp('ts', { withTimezone: true }).defaultNow().notNull(),
+  level: text('level').notNull().default('info'),
+  message: text('message').notNull(),
+  /** When this log row belongs to a sync run (Auto Sync / Backup / Sync Now),
+   *  this points at the sync_run row so the UI can group logs per run. NULL
+   *  for logs emitted by the initial migration. */
+  syncRunId: uuid('sync_run_id').references(() => syncRun.id, { onDelete: 'cascade' }),
+});
+
+/**
+ * Per-bulk-pair log stream. The single-migration log stream lives on
+ * `migration_log`; bulk pairs don't materialise into the migration table
+ * so they get their own table here. Currently only written by the
+ * bulk-pair-sync worker; the initial bulk-migration job does not yet emit
+ * structured logs per pair (future enhancement). syncRunId is NOT NULL
+ * because today every row belongs to a sync run — relax if/when initial
+ * bulk pair logs land.
+ */
+export const bulkPairLog = pgTable('bulk_pair_log', {
+  id: serial('id').primaryKey(),
+  bulkPairId: integer('bulk_pair_id')
+    .notNull()
+    .references(() => bulkPair.id, { onDelete: 'cascade' }),
+  syncRunId: uuid('sync_run_id')
+    .notNull()
+    .references(() => syncRun.id, { onDelete: 'cascade' }),
+  ts: timestamp('ts', { withTimezone: true }).defaultNow().notNull(),
+  level: text('level').notNull().default('info'),
+  message: text('message').notNull(),
 });
 
 export const appSetting = pgTable('app_setting', {

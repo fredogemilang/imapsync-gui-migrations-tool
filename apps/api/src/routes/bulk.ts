@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { bulkMigration, bulkPair } from '../db/schema.js';
+import { bulkMigration, bulkPair, bulkPairLog, syncRun } from '../db/schema.js';
 import { encrypt } from '../lib/crypto.js';
 import { bulkPairSyncJobId, bulkPairSyncQueue, bulkQueue } from '../lib/queue.js';
 import { redis } from '../lib/redis.js';
@@ -202,6 +202,42 @@ export async function bulkRoutes(app: FastifyInstance) {
     const pairs = await db.select().from(bulkPair).where(eq(bulkPair.bulkId, id));
     return { ...b, pairs };
   });
+
+  // -------- Sync history (per-pair) ---------------------------------------
+  // List of past sync runs for one pair, newest first. Capped at 50 — same
+  // rationale as the single-migration endpoint. We scope by both bulkId
+  // AND bulkPairId so a crafted URL can't pull runs across bulks.
+  app.get(
+    '/api/bulk-migrations/:id/pairs/:pairId/sync-runs',
+    { preHandler: [app.requireAuth] },
+    async (req) => {
+      const { id, pairId } = req.params as any;
+      const rows = await db
+        .select()
+        .from(syncRun)
+        .where(and(eq(syncRun.bulkId, id), eq(syncRun.bulkPairId, Number(pairId))))
+        .orderBy(desc(syncRun.startedAt))
+        .limit(50);
+      return rows;
+    },
+  );
+
+  // Logs for one pair's sync run. Bulk pair logs live in `bulk_pair_log`
+  // (separate from migration_log because pairs aren't migrations).
+  app.get(
+    '/api/bulk-migrations/:id/pairs/:pairId/sync-runs/:runId/logs',
+    { preHandler: [app.requireAuth] },
+    async (req) => {
+      const { pairId, runId } = req.params as any;
+      const rows = await db
+        .select()
+        .from(bulkPairLog)
+        .where(and(eq(bulkPairLog.bulkPairId, Number(pairId)), eq(bulkPairLog.syncRunId, runId)))
+        .orderBy(desc(bulkPairLog.ts))
+        .limit(500);
+      return rows;
+    },
+  );
 
   app.post('/api/bulk-migrations', { preHandler: [app.requireAuth] }, async (req) => {
     const body = CreateBulkBody.parse(req.body);

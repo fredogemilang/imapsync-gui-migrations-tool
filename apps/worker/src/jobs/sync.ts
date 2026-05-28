@@ -1,8 +1,8 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { Job } from 'bullmq';
 import type { ChildProcess } from 'node:child_process';
 import { Redis } from 'ioredis';
-import { db, imapAccount, migration, migrationLog } from '../db.js';
+import { db, imapAccount, migration, migrationLog, syncRun } from '../db.js';
 import { decrypt } from '../crypto.js';
 import { runImapsync, type Security } from '../imapsync.js';
 import { resolveEmailHeaderSetting } from '../app-settings.js';
@@ -95,13 +95,30 @@ export async function handleSyncJob(job: Job<{ migrationId: string; manual?: boo
   const dateTo = settings.dateFilterEnabled ? parseDate(settings.dateTo) : null;
   const emailHeaderSettings = await resolveEmailHeaderSetting(settings);
 
+  // Open a sync_run row. Every per-run log line gets tagged with this id
+  // so the UI can group history per run. trigger reflects how we got here:
+  //   manual    → user clicked Sync Now
+  //   m.syncMode → 'auto' (Auto Sync) or 'backup' (Backup Mode)
+  const trigger: 'manual' | 'auto' | 'backup' = manual
+    ? 'manual'
+    : m.syncMode === 'backup'
+      ? 'backup'
+      : 'auto';
+  const [run] = await db
+    .insert(syncRun)
+    .values({ migrationId: id, trigger, status: 'running' })
+    .returning({ id: syncRun.id });
+  const runId = run!.id;
+
   const publish = (data: object): void => {
-    void pub.publish(`migration:${id}`, JSON.stringify({ syncTick: true, ...data }));
+    void pub.publish(`migration:${id}`, JSON.stringify({ syncTick: true, runId, ...data }));
   };
 
-  publish({ kind: 'sync-status', running: true, manual });
+  publish({ kind: 'sync-status', running: true, manual, runId, trigger });
+  publish({ kind: 'sync-run-started', runId, trigger });
   void db.insert(migrationLog).values({
     migrationId: id,
+    syncRunId: runId,
     level: 'info',
     message: manual ? 'Manual Sync Now started' : `Scheduled sync (${m.syncMode}) started`,
   });
@@ -115,6 +132,10 @@ export async function handleSyncJob(job: Job<{ migrationId: string; manual?: boo
 
   const cleanupRef: { fn: (() => Promise<void>) | null } = { fn: null };
   const childRef: { c: ChildProcess | null } = { c: null };
+  // Per-run running totals. Aggregated from imapsync's `folder-stats` events
+  // so the UI can show "synced N emails / M MB" once the run is done.
+  let runEmails = 0;
+  let runBytes = 0;
 
   try {
     const handle = await runImapsync(
@@ -149,12 +170,17 @@ export async function handleSyncJob(job: Job<{ migrationId: string; manual?: boo
         emailHeaderSettings,
       },
       (ev) => {
-        // Delta-sync progress is generally short; we just stream completion.
         if (ev.kind === 'log') {
           void db
             .insert(migrationLog)
-            .values({ migrationId: id, level: ev.level, message: ev.message })
+            .values({ migrationId: id, syncRunId: runId, level: ev.level, message: ev.message })
             .catch(() => {});
+          // Stream individual lines so the YourMigration "live logs" panel
+          // can render them without polling. Cheap — same channel as status.
+          publish({ kind: 'sync-run-log', runId, level: ev.level, message: ev.message });
+        } else if (ev.kind === 'folder-stats') {
+          runEmails += ev.copied ?? 0;
+          runBytes += ev.bytes ?? 0;
         } else if (ev.kind === 'done') {
           if (ev.ok) resolveDone();
           else rejectDone(new Error(ev.error ?? 'sync failed'));
@@ -165,25 +191,72 @@ export async function handleSyncJob(job: Job<{ migrationId: string; manual?: boo
     cleanupRef.fn = handle.cleanup;
     handle.child.on('error', (e) => rejectDone(e));
     await done;
+    const finishedAt = new Date();
     await db
       .update(migration)
-      .set({ syncRunning: false, lastSyncAt: new Date() })
+      .set({
+        syncRunning: false,
+        lastSyncAt: finishedAt,
+        // Roll the per-run delta up to the migration's lifetime counters so
+        // the headline stats on the YourMigration card reflect everything
+        // copied, not just the initial run.
+        migratedEmails: sql`${migration.migratedEmails} + ${runEmails}`,
+        migratedBytes: sql`${migration.migratedBytes} + ${runBytes}`,
+      })
       .where(eq(migration.id, id));
-    publish({ kind: 'sync-status', running: false, ok: true, manual });
-  } catch (e: any) {
-    await db.update(migration).set({ syncRunning: false }).where(eq(migration.id, id));
-    publish({ kind: 'sync-status', running: false, ok: false, error: e?.message, manual });
+    await db
+      .update(syncRun)
+      .set({
+        status: 'success',
+        finishedAt,
+        migratedEmails: runEmails,
+        migratedBytes: runBytes,
+      })
+      .where(eq(syncRun.id, runId));
     void db.insert(migrationLog).values({
       migrationId: id,
+      syncRunId: runId,
+      level: 'info',
+      message: `Sync completed — ${runEmails} new emails, ${runBytes} bytes`,
+    });
+    publish({
+      kind: 'sync-run-finished',
+      runId,
+      ok: true,
+      migratedEmails: runEmails,
+      migratedBytes: runBytes,
+    });
+    publish({ kind: 'sync-status', running: false, ok: true, manual, runId });
+  } catch (e: any) {
+    const errorMessage = e?.message ?? 'imapsync exited with error';
+    const finishedAt = new Date();
+    await db.update(migration).set({ syncRunning: false }).where(eq(migration.id, id));
+    await db
+      .update(syncRun)
+      .set({
+        status: 'failed',
+        finishedAt,
+        errorMessage,
+        // Keep whatever partial totals we tallied so the user can see
+        // "synced 3 emails before failing" rather than a flat 0.
+        migratedEmails: runEmails,
+        migratedBytes: runBytes,
+      })
+      .where(eq(syncRun.id, runId));
+    publish({ kind: 'sync-run-finished', runId, ok: false, error: errorMessage });
+    publish({ kind: 'sync-status', running: false, ok: false, error: errorMessage, manual, runId });
+    void db.insert(migrationLog).values({
+      migrationId: id,
+      syncRunId: runId,
       level: 'error',
-      message: `Sync failed: ${e?.message}`,
+      message: `Sync failed: ${errorMessage}`,
     });
     // Surface to the bell so the admin notices even if they never visit
     // the migration page. Successes are silent — too noisy.
     void createNotification({
       kind: 'error',
       title: manual ? 'Manual sync failed' : 'Scheduled sync failed',
-      body: e?.message ?? 'imapsync exited with error',
+      body: errorMessage,
       linkPath: `/migrations/${id}`,
       migrationId: id,
     });

@@ -3,7 +3,7 @@ import type { Job } from 'bullmq';
 import type { ChildProcess } from 'node:child_process';
 import { Redis } from 'ioredis';
 import { Queue } from 'bullmq';
-import { db, bulkMigration, bulkPair } from '../db.js';
+import { db, bulkMigration, bulkPair, bulkPairLog, syncRun } from '../db.js';
 import { decrypt } from '../crypto.js';
 import { runImapsync, type Security } from '../imapsync.js';
 import { resolveEmailHeaderSetting } from '../app-settings.js';
@@ -102,11 +102,29 @@ export async function handleBulkPairSync(
   const dateTo = settings.dateFilterEnabled === true ? parseDate(settings.dateTo) : null;
   const emailHeaderSettings = await resolveEmailHeaderSetting(settings);
 
+  // Open a sync_run row keyed by (bulkId, bulkPairId). Logs from this run
+  // are tagged with the returned id so the UI can drill from pair → run →
+  // log lines. Trigger derived from bulk-level settings (backupMode wins
+  // when both are on — same precedence as the bulk worker's scheduling).
+  const trigger: 'manual' | 'auto' | 'backup' = manual ? 'manual' : backupMode ? 'backup' : 'auto';
+  const [run] = await db
+    .insert(syncRun)
+    .values({ bulkId, bulkPairId: pairId, trigger, status: 'running' })
+    .returning({ id: syncRun.id });
+  const runId = run!.id;
+
   const publish = (data: object): void => {
-    void pub.publish(`bulk:${bulkId}`, JSON.stringify({ pairId, syncTick: true, ...data }));
+    void pub.publish(`bulk:${bulkId}`, JSON.stringify({ pairId, syncTick: true, runId, ...data }));
   };
 
-  publish({ kind: 'sync-status', running: true, manual });
+  publish({ kind: 'sync-status', running: true, manual, runId, trigger });
+  publish({ kind: 'sync-run-started', runId, trigger });
+  void db.insert(bulkPairLog).values({
+    bulkPairId: pairId,
+    syncRunId: runId,
+    level: 'info',
+    message: manual ? 'Manual Sync Now started' : `Scheduled sync (${trigger}) started`,
+  });
 
   let resolveDone!: () => void;
   let rejectDone!: (e: Error) => void;
@@ -117,6 +135,9 @@ export async function handleBulkPairSync(
 
   const cleanupRef: { fn: (() => Promise<void>) | null } = { fn: null };
   const childRef: { c: ChildProcess | null } = { c: null };
+  // Per-run running totals, aggregated from imapsync folder-stats events.
+  let runEmails = 0;
+  let runBytes = 0;
 
   try {
     const handle = await runImapsync(
@@ -149,7 +170,21 @@ export async function handleBulkPairSync(
         emailHeaderSettings,
       },
       (ev) => {
-        if (ev.kind === 'done') {
+        if (ev.kind === 'log') {
+          void db
+            .insert(bulkPairLog)
+            .values({
+              bulkPairId: pairId,
+              syncRunId: runId,
+              level: ev.level,
+              message: ev.message,
+            })
+            .catch(() => {});
+          publish({ kind: 'sync-run-log', runId, level: ev.level, message: ev.message });
+        } else if (ev.kind === 'folder-stats') {
+          runEmails += ev.copied ?? 0;
+          runBytes += ev.bytes ?? 0;
+        } else if (ev.kind === 'done') {
           if (ev.ok) resolveDone();
           else rejectDone(new Error(ev.error ?? 'sync failed'));
         }
@@ -159,14 +194,55 @@ export async function handleBulkPairSync(
     cleanupRef.fn = handle.cleanup;
     handle.child.on('error', (e) => rejectDone(e));
     await done;
-    publish({ kind: 'sync-status', running: false, ok: true, manual });
+    const finishedAt = new Date();
+    await db
+      .update(syncRun)
+      .set({
+        status: 'success',
+        finishedAt,
+        migratedEmails: runEmails,
+        migratedBytes: runBytes,
+      })
+      .where(eq(syncRun.id, runId));
+    void db.insert(bulkPairLog).values({
+      bulkPairId: pairId,
+      syncRunId: runId,
+      level: 'info',
+      message: `Sync completed — ${runEmails} new emails, ${runBytes} bytes`,
+    });
+    publish({
+      kind: 'sync-run-finished',
+      runId,
+      ok: true,
+      migratedEmails: runEmails,
+      migratedBytes: runBytes,
+    });
+    publish({ kind: 'sync-status', running: false, ok: true, manual, runId });
     return { ok: true };
   } catch (e: any) {
-    publish({ kind: 'sync-status', running: false, ok: false, error: e?.message, manual });
+    const errorMessage = e?.message ?? 'imapsync error';
+    await db
+      .update(syncRun)
+      .set({
+        status: 'failed',
+        finishedAt: new Date(),
+        errorMessage,
+        migratedEmails: runEmails,
+        migratedBytes: runBytes,
+      })
+      .where(eq(syncRun.id, runId));
+    void db.insert(bulkPairLog).values({
+      bulkPairId: pairId,
+      syncRunId: runId,
+      level: 'error',
+      message: `Sync failed: ${errorMessage}`,
+    });
+    publish({ kind: 'sync-run-finished', runId, ok: false, error: errorMessage });
+    publish({ kind: 'sync-status', running: false, ok: false, error: errorMessage, manual, runId });
     void createNotification({
       kind: 'error',
       title: 'Pair sync failed',
-      body: `${pair.sourceUsername}: ${e?.message ?? 'imapsync error'}`,
+      body: `${pair.sourceUsername}: ${errorMessage}`,
       linkPath: `/bulk/${bulkId}`,
       bulkId,
     });

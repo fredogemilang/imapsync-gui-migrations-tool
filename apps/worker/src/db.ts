@@ -65,14 +65,6 @@ export const migrationFolder = pgTable('migration_folder', {
   status: text('status').notNull(),
 });
 
-export const migrationLog = pgTable('migration_log', {
-  id: serial('id').primaryKey(),
-  migrationId: uuid('migration_id').notNull(),
-  ts: timestamp('ts', { withTimezone: true }),
-  level: text('level').notNull(),
-  message: text('message').notNull(),
-});
-
 export const bulkMigration = pgTable('bulk_migration', {
   id: uuid('id').primaryKey(),
   sourceHost: text('source_host').notNull(),
@@ -100,6 +92,47 @@ export const bulkPair = pgTable('bulk_pair', {
   migratedEmails: integer('migrated_emails').notNull(),
   totalEmails: integer('total_emails').notNull(),
   error: text('error'),
+});
+
+// Sync history — one row per sync run (single migration delta sync OR
+// bulk pair delta sync). Worker inserts at the start of each sync and
+// updates finishedAt + status + counters at the end. Mirrors
+// `apps/api/src/db/schema.ts`.
+export const syncRun = pgTable('sync_run', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  migrationId: uuid('migration_id'),
+  bulkId: uuid('bulk_id'),
+  bulkPairId: integer('bulk_pair_id'),
+  trigger: text('trigger').notNull(),
+  status: text('status').notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  migratedEmails: integer('migrated_emails').notNull().default(0),
+  migratedBytes: bigint('migrated_bytes', { mode: 'number' }).notNull().default(0),
+  errorMessage: text('error_message'),
+});
+
+// Per-migration log stream — initial migration AND sync-run log lines. The
+// `syncRunId` column (nullable) ties a log row to a specific sync run so the
+// UI can group history per run.
+export const migrationLog = pgTable('migration_log', {
+  id: serial('id').primaryKey(),
+  migrationId: uuid('migration_id').notNull(),
+  ts: timestamp('ts', { withTimezone: true }),
+  level: text('level').notNull(),
+  message: text('message').notNull(),
+  syncRunId: uuid('sync_run_id'),
+});
+
+// Per-bulk-pair log stream — only populated by the bulk-pair-sync worker
+// today; the initial bulk migration job does not yet emit per-pair logs.
+export const bulkPairLog = pgTable('bulk_pair_log', {
+  id: serial('id').primaryKey(),
+  bulkPairId: integer('bulk_pair_id').notNull(),
+  syncRunId: uuid('sync_run_id').notNull(),
+  ts: timestamp('ts', { withTimezone: true }).defaultNow().notNull(),
+  level: text('level').notNull(),
+  message: text('message').notNull(),
 });
 
 // Key-value app settings — mirrors `apps/api/src/db/schema.ts`. Used by
