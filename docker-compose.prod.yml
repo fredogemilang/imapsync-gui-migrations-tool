@@ -31,6 +31,15 @@ services:
       NODE_ENV: production
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
+    # Healthcheck verifies the server is listening AFTER the entrypoint's
+    # `drizzle-kit push --force` finishes — so dependents (worker) wait
+    # for schema to be up-to-date before they start hitting the DB.
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -q --spider http://localhost:3000/api/auth/me || true; exit 0']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
     depends_on:
       postgres:
         condition: service_healthy
@@ -62,6 +71,10 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_started
+      # Wait for api so schema push completes before worker starts
+      # writing to (potentially missing) columns.
+      api:
         condition: service_started
 
   web:

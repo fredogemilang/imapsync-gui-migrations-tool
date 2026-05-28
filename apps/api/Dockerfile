@@ -30,7 +30,13 @@ COPY package.json pnpm-workspace.yaml ./
 COPY apps/api/package.json apps/api/
 RUN pnpm install --filter @emt/api... --prod
 COPY --from=build /app/apps/api/dist ./apps/api/dist
-COPY --from=build /app/apps/api/drizzle ./apps/api/drizzle
+# drizzle-kit needs both the config + the schema source file at runtime
+# so the entrypoint can call `drizzle-kit push --force` to auto-apply
+# any pending schema changes when the container starts.
+COPY apps/api/drizzle.config.ts apps/api/
+COPY apps/api/src/db ./apps/api/src/db
+COPY apps/api/docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 WORKDIR /app/apps/api
 EXPOSE 3000
-CMD ["node", "dist/server.js"]
+ENTRYPOINT ["/docker-entrypoint.sh"]

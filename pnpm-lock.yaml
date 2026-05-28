@@ -65,6 +65,9 @@ importers:
       bullmq:
         specifier: ^5.21.2
         version: 5.77.6
+      drizzle-kit:
+        specifier: ^0.28.1
+        version: 0.28.1
       drizzle-orm:
         specifier: ^0.36.4
         version: 0.36.4(@types/react@18.3.29)(postgres@3.4.9)(react@18.3.1)
@@ -90,9 +93,6 @@ importers:
       '@types/node':
         specifier: ^22.9.0
         version: 22.19.19
-      drizzle-kit:
-        specifier: ^0.28.1
-        version: 0.28.1
       tsx:
         specifier: ^4.19.2
         version: 4.22.3

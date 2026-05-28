@@ -23,13 +23,29 @@ Visit http://localhost:5173, login with `admin@example.com` / `changeme` (from `
 
 > **Tip**: For Windows, mounted node_modules can be slow. The compose file uses anonymous volumes for `node_modules` to keep them inside the container.
 
-## Push schema (first time AND after pulls that add columns)
+## Push schema
+
+### Production (Dokploy / `docker-compose.prod.yml`) — AUTOMATIC
+
+The API container's entrypoint runs `drizzle-kit push --force` before the
+server listens. Every Dokploy deploy applies any pending schema diffs
+automatically. The compose file's healthcheck + worker `depends_on api`
+ensure the worker only starts after schema is up-to-date.
+
+> **Heads up**: `--force` accepts schema changes that may cause data loss
+> (dropped columns, narrowed types). For this self-hosted single-admin
+> tool we accept that trade-off because the Postgres volume is snapshotted
+> per the backup checklist below. If you want stricter review, replace
+> the entrypoint with generated SQL migrations (see
+> `apps/api/docker-entrypoint.sh` for the snippet).
+
+### Local development — manual (avoids destructive auto-push during dev)
 
 ```sh
 docker compose exec api pnpm run db:push
 ```
 
-Re-run this whenever you pull changes that add columns / tables. Recent migrations added:
+Re-run whenever you pull changes that add columns / tables. Recent additions:
 
 - `notification` table (in-app bell)
 - `migration.migrated_bytes`
