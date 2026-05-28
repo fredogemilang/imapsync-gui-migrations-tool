@@ -34,8 +34,10 @@ services:
     # Healthcheck verifies the server is listening AFTER the entrypoint's
     # `drizzle-kit push --force` finishes — so dependents (worker) wait
     # for schema to be up-to-date before they start hitting the DB.
+    # Hits the no-auth /api/health endpoint and FAILS if it can't reach
+    # (different from the previous `|| true; exit 0` which always passed).
     healthcheck:
-      test: ['CMD-SHELL', 'wget -q --spider http://localhost:3000/api/auth/me || true; exit 0']
+      test: ['CMD-SHELL', 'wget -q --spider --tries=1 http://localhost:3000/api/health']
       interval: 10s
       timeout: 5s
       retries: 30
@@ -83,7 +85,11 @@ services:
       dockerfile: apps/web/Dockerfile
       target: prod
       args:
-        VITE_API_BASE: https://${PUBLIC_DOMAIN}
+        # Empty = same-origin (recommended): browser calls /api/* on the
+        # same PUBLIC_DOMAIN, Traefik routes /api PathPrefix to api.
+        # Override only for split-domain deploys (web on app.example.com,
+        # api on api.example.com) — set the api's full origin here.
+        VITE_API_BASE: ${VITE_API_BASE:-}
     restart: always
     labels:
       - 'traefik.enable=true'

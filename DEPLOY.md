@@ -66,32 +66,48 @@ If schema is out of sync the worker / API will throw `column "..." does not exis
 
 3. **Environment variables** — set these in the Dokploy app:
 
+   **Required**:
+
    ```
    POSTGRES_USER=emt
    POSTGRES_PASSWORD=<strong random>
    POSTGRES_DB=emt
-   JWT_SECRET=<64 hex chars>
-   MASTER_KEY=<64 hex chars>
-   ADMIN_EMAIL=admin@example.com           # or admin@yourdomain.com
-   ADMIN_INITIAL_PASSWORD=<temporary, change on first login via /change-password>
+   JWT_SECRET=<64 hex chars>                 # openssl rand -hex 32
+   MASTER_KEY=<64 hex chars>                 # openssl rand -hex 32 — BACK THIS UP
+   ADMIN_EMAIL=admin@yourdomain.com
+   ADMIN_INITIAL_PASSWORD=<temp, change on first login>
    PUBLIC_DOMAIN=mailmigrate.yourdomain.com
+   NODE_ENV=production
    ```
+
+   **Optional** (skip unless your setup needs them):
+
+   ```
+   # Set ONLY if web is hosted on a different domain than api (split-domain).
+   # Default same-origin via Traefik PathPrefix works for 99% of deploys.
+   # VITE_API_BASE=https://api.yourdomain.com   # build arg (also pass at build)
+   # WEB_ORIGIN=https://app.yourdomain.com      # API CORS allow
+   ```
+
+   **Do NOT set** — auto-injected by compose, would only confuse:
+   - `POSTGRES_HOST` / `REDIS_HOST` (compose sets these to `postgres` / `redis`)
+   - `API_PORT` / `WEB_PORT` (internal ports, fixed by Dockerfile EXPOSE)
 
 4. **Traefik / domain**:
    - In Dokploy, point the app's domain to `PUBLIC_DOMAIN`.
    - Compose labels already configure Traefik with `letsencrypt` cert resolver. If your Dokploy Traefik uses a different name, edit the labels in `docker-compose.prod.yml`.
 
 5. **First deploy**:
-   - Dokploy will build and run all services.
-   - The API auto-seeds the admin user on first boot.
-   - Run `db:push` once to create the schema:
-     ```sh
-     docker compose -f docker-compose.prod.yml exec api pnpm run db:push
-     ```
+   - Dokploy builds + runs all services.
+   - API container entrypoint runs `drizzle-kit push --force` to create
+     the schema, then `seedAdmin()` creates the admin user from
+     `ADMIN_EMAIL` + `ADMIN_INITIAL_PASSWORD`.
+   - Worker waits for API healthcheck before starting, so it never
+     touches a table that doesn't exist yet.
 
 6. **Subsequent deploys**:
    - `git push` to `main` triggers Dokploy auto-deploy.
-   - If the new commits touched `apps/api/src/db/schema.ts`, re-run `db:push` after the deploy lands.
+   - Schema changes are applied automatically — no manual `db:push` needed.
 
 ## Worker queues & background jobs
 

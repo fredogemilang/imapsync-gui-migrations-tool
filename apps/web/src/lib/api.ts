@@ -1,4 +1,15 @@
-const BASE = ''; // proxied via vite or same-origin in prod
+// API origin. Default empty string means SAME-ORIGIN — the browser hits
+// `/api/*` on whatever domain served the page (Traefik then routes /api
+// to the api container based on PathPrefix). This is the simplest setup
+// and the recommended default.
+//
+// Override at BUILD time via `VITE_API_BASE` (Dockerfile ARG) when the
+// web app is served from a different domain than the api, e.g.:
+//   web → https://app.example.com
+//   api → https://api.example.com  ← set VITE_API_BASE to this
+// Don't include a trailing slash — paths like `/api/migrations` are
+// concatenated as-is.
+const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   // IMPORTANT: only advertise application/json when we actually send a body.

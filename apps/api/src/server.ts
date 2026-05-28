@@ -36,8 +36,15 @@ async function main() {
     bodyLimit: 5 * 1024 * 1024, // 5 MB — bulk CSV must fit, but no further
   });
 
+  // CORS policy:
+  //   - dev: reflect any origin (Vite dev server may serve from various
+  //     ports / hostnames during local work)
+  //   - prod default: no CORS — same-origin only (web + api share the
+  //     Traefik-routed PUBLIC_DOMAIN)
+  //   - prod split-domain: set WEB_ORIGIN to e.g. https://app.example.com
+  //     when web frontend lives on a different host than this api
   await app.register(cors, {
-    origin: env.NODE_ENV === 'development' ? true : false,
+    origin: env.NODE_ENV === 'development' ? true : (env.WEB_ORIGIN ?? false),
     credentials: true,
   });
   await app.register(cookie);
