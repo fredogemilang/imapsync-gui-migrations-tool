@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -11,10 +11,11 @@ import {
   Search,
   XCircle,
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, type SyncLogRow } from '@/lib/api';
 import { formatBytes, cn } from '@/lib/utils';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { MigrationOptionsCard } from '@/components/MigrationOptionsCard';
+import { SyncHistoryPanel } from '@/components/SyncHistoryPanel';
 import {
   HeaderBackLink,
   HeaderDelete,
@@ -67,6 +68,69 @@ export function YourMigration() {
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.syncRunning]);
+
+  // ---------------------------------------------------------------------
+  // Sync History — live SSE feed
+  //
+  // We subscribe to the same migration:{id} SSE channel used by the live
+  // progress page, but here we only care about sync-run events. As log
+  // lines arrive during an active run, we append them so the expanded
+  // run panel in SyncHistoryPanel can show them without waiting for the
+  // next poll.
+  //
+  // refreshKey is bumped whenever a sync-run-finished event fires, which
+  // tells the panel to re-fetch its list (so the finished run flips from
+  // Running → Success/Failed without manual reload).
+  // ---------------------------------------------------------------------
+  const [liveRunId, setLiveRunId] = useState<string | null>(null);
+  const [liveLogs, setLiveLogs] = useState<SyncLogRow[]>([]);
+  const [syncHistoryRefreshKey, setSyncHistoryRefreshKey] = useState(0);
+  const liveLogsRef = useRef<SyncLogRow[]>([]);
+
+  useEffect(() => {
+    if (!id) return;
+    const es = new EventSource(`/api/migrations/${id}/events`, { withCredentials: true });
+    es.addEventListener('progress', (e: MessageEvent) => {
+      let data: any;
+      try {
+        data = JSON.parse(e.data);
+      } catch {
+        return;
+      }
+      if (!data?.syncTick) return;
+      if (data.kind === 'sync-run-started' && data.runId) {
+        setLiveRunId(data.runId as string);
+        liveLogsRef.current = [];
+        setLiveLogs([]);
+        // Force the panel to re-pull so the newly-inserted 'running' row
+        // appears at the top.
+        setSyncHistoryRefreshKey((k) => k + 1);
+      } else if (data.kind === 'sync-run-log' && data.runId === liveRunId) {
+        const row: SyncLogRow = {
+          id: Date.now() + Math.random(),
+          ts: new Date().toISOString(),
+          level: data.level ?? 'info',
+          message: data.message ?? '',
+        };
+        liveLogsRef.current = [...liveLogsRef.current, row];
+        // Cap to last 200 to keep the DOM lean.
+        if (liveLogsRef.current.length > 200) {
+          liveLogsRef.current = liveLogsRef.current.slice(-200);
+        }
+        setLiveLogs(liveLogsRef.current);
+      } else if (data.kind === 'sync-run-finished') {
+        // Bump the panel refresh so it pulls the final status + counters.
+        setSyncHistoryRefreshKey((k) => k + 1);
+        // Keep liveRunId set briefly so the panel can still render the
+        // accumulated live logs; clear on the next started event.
+      }
+    });
+    // The browser hammers reconnect by default — that's fine; SSE is cheap.
+    return () => {
+      es.close();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
 
   // --- Delete handler ----------------------------------------------------
   // The header button opens a styled ConfirmDialog. On confirm we call the
@@ -243,6 +307,21 @@ export function YourMigration() {
           busy={busy}
           setBusy={setBusy}
           onRefresh={refresh}
+        />
+      )}
+
+      {/* Sync History — only meaningful once the initial migration has
+          finished and (eventually) sync runs start landing. We render the
+          panel regardless of whether any runs exist yet so the user gets
+          a clear "no runs yet" empty state to understand what they'll see
+          here later. */}
+      {data.status === 'completed' && id && (
+        <SyncHistoryPanel
+          scope={{ type: 'migration', migrationId: id }}
+          lastSyncAt={data.lastSyncAt}
+          liveRunId={liveRunId}
+          liveLogs={liveLogs}
+          refreshKey={syncHistoryRefreshKey}
         />
       )}
 

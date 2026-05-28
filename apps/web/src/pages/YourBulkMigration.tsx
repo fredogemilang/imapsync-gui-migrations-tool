@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -11,10 +11,11 @@ import {
   Search,
   XCircle,
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, type SyncLogRow } from '@/lib/api';
 import { cn, formatBytes } from '@/lib/utils';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Switch } from '@/components/ui/Switch';
+import { SyncHistoryPanel } from '@/components/SyncHistoryPanel';
 import {
   HeaderBackLink,
   HeaderDelete,
@@ -105,6 +106,60 @@ export function YourBulkMigration() {
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLive]);
+
+  // -------------------------------------------------------------------
+  // Sync History — live SSE feed, keyed by pairId.
+  //
+  // We subscribe once to bulk:{id} and route incoming sync-run-* events
+  // into per-pair buckets so the open PairDetailsModal can render live
+  // log lines for the right pair without each modal opening its own
+  // EventSource.
+  // -------------------------------------------------------------------
+  type LivePair = { runId: string | null; logs: SyncLogRow[]; refreshKey: number };
+  const [livePairs, setLivePairs] = useState<Record<number, LivePair>>({});
+  const livePairsRef = useRef<Record<number, LivePair>>({});
+
+  useEffect(() => {
+    if (!id) return;
+    const es = new EventSource(`/api/bulk-migrations/${id}/events`, { withCredentials: true });
+    es.addEventListener('progress', (e: MessageEvent) => {
+      let payload: any;
+      try {
+        payload = JSON.parse(e.data);
+      } catch {
+        return;
+      }
+      if (!payload?.syncTick || typeof payload.pairId !== 'number') return;
+      const pairId = payload.pairId as number;
+      const prev: LivePair = livePairsRef.current[pairId] ?? {
+        runId: null,
+        logs: [],
+        refreshKey: 0,
+      };
+      let next: LivePair = prev;
+      if (payload.kind === 'sync-run-started') {
+        next = { runId: payload.runId ?? null, logs: [], refreshKey: prev.refreshKey + 1 };
+      } else if (payload.kind === 'sync-run-log' && prev.runId === payload.runId) {
+        const row: SyncLogRow = {
+          id: Date.now() + Math.random(),
+          ts: new Date().toISOString(),
+          level: payload.level ?? 'info',
+          message: payload.message ?? '',
+        };
+        const logs = [...prev.logs, row].slice(-200);
+        next = { ...prev, logs };
+      } else if (payload.kind === 'sync-run-finished') {
+        next = { ...prev, refreshKey: prev.refreshKey + 1 };
+      } else {
+        return;
+      }
+      livePairsRef.current = { ...livePairsRef.current, [pairId]: next };
+      setLivePairs(livePairsRef.current);
+    });
+    return () => {
+      es.close();
+    };
+  }, [id]);
 
   // ----- Delete handler --------------------------------------------------
   const onConfirmDelete = async () => {
@@ -352,7 +407,14 @@ export function YourBulkMigration() {
       />
 
       {/* Modals */}
-      {detailsFor && <PairDetailsModal pair={detailsFor} onClose={() => setDetailsFor(null)} />}
+      {detailsFor && (
+        <PairDetailsModal
+          bulkId={id!}
+          pair={detailsFor}
+          live={livePairs[detailsFor.id]}
+          onClose={() => setDetailsFor(null)}
+        />
+      )}
 
       <ConfirmDialog
         open={deleteConfirmOpen}
@@ -586,7 +648,19 @@ function PairStatusBadge({ status }: { status: string }) {
   );
 }
 
-function PairDetailsModal({ pair, onClose }: { pair: Pair; onClose: () => void }) {
+function PairDetailsModal({
+  bulkId,
+  pair,
+  live,
+  onClose,
+}: {
+  bulkId: string;
+  pair: Pair;
+  /** Live sync state for this pair (current run id + streamed log lines).
+   *  Undefined when no sync run has been observed since the page loaded. */
+  live?: { runId: string | null; logs: SyncLogRow[]; refreshKey: number };
+  onClose: () => void;
+}) {
   // ESC closes
   useEffect(() => {
     const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -599,7 +673,7 @@ function PairDetailsModal({ pair, onClose }: { pair: Pair; onClose: () => void }
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6">
       <div onClick={onClose} className="absolute inset-0 bg-slate-900/50 backdrop-blur-md" />
-      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden z-10 max-h-[85vh]">
+      <div className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden z-10 max-h-[85vh]">
         <button
           onClick={onClose}
           aria-label="Close"
@@ -653,6 +727,17 @@ function PairDetailsModal({ pair, onClose }: { pair: Pair; onClose: () => void }
               <p className="text-xs font-bold text-red-700 tracking-wider uppercase">Error</p>
               <p className="text-sm text-red-700 break-words">{pair.error}</p>
             </div>
+          )}
+
+          {/* Per-pair sync history. Only shown once the pair's initial copy
+              has succeeded — sync runs only make sense for completed pairs. */}
+          {pair.status === 'completed' && (
+            <SyncHistoryPanel
+              scope={{ type: 'bulkPair', bulkId, pairId: pair.id }}
+              liveRunId={live?.runId ?? null}
+              liveLogs={live?.logs}
+              refreshKey={live?.refreshKey}
+            />
           )}
         </div>
 

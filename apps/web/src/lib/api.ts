@@ -106,6 +106,11 @@ export const api = {
     ),
   disableSync: (id: string) => request(`/api/migrations/${id}/sync/disable`, { method: 'POST' }),
   syncNow: (id: string) => request(`/api/migrations/${id}/sync/now`, { method: 'POST' }),
+  /** List sync runs for a single migration (latest 50, newest first). */
+  listSyncRuns: (id: string) => request<SyncRun[]>(`/api/migrations/${id}/sync-runs`),
+  /** Logs for one sync run, newest first. */
+  getSyncRunLogs: (id: string, runId: string) =>
+    request<SyncLogRow[]>(`/api/migrations/${id}/sync-runs/${runId}/logs`),
 
   listBulk: () => request<any[]>('/api/bulk-migrations'),
   getBulk: (id: string) => request<any>(`/api/bulk-migrations/${id}`),
@@ -129,6 +134,12 @@ export const api = {
     request<{ ok: boolean; count: number }>(`/api/bulk-migrations/${id}/sync/now`, {
       method: 'POST',
     }),
+  /** List sync runs for one bulk pair (latest 50, newest first). */
+  listBulkPairSyncRuns: (bulkId: string, pairId: number) =>
+    request<SyncRun[]>(`/api/bulk-migrations/${bulkId}/pairs/${pairId}/sync-runs`),
+  /** Logs for one bulk pair sync run. */
+  getBulkPairSyncRunLogs: (bulkId: string, pairId: number, runId: string) =>
+    request<SyncLogRow[]>(`/api/bulk-migrations/${bulkId}/pairs/${pairId}/sync-runs/${runId}/logs`),
 
   getSettings: () => request<any>('/api/settings'),
   saveSettings: (payload: any) =>
@@ -159,4 +170,30 @@ export type ImapCfg = {
   security: 'SSL/TLS' | 'STARTTLS' | 'None';
   username: string;
   password: string;
+};
+
+/** Server-emitted sync run record. The shape matches the `sync_run` table
+ *  row, with timestamps serialised as ISO strings over the wire. */
+export type SyncRun = {
+  id: string;
+  migrationId: string | null;
+  bulkId: string | null;
+  bulkPairId: number | null;
+  trigger: 'auto' | 'backup' | 'manual';
+  status: 'running' | 'success' | 'failed';
+  startedAt: string;
+  finishedAt: string | null;
+  migratedEmails: number;
+  migratedBytes: number;
+  errorMessage: string | null;
+};
+
+/** Generic row shape for both `migration_log` and `bulk_pair_log`. The id
+ *  type differs (text uuid for sync run logs vs serial int for both log
+ *  tables) but UIs treat it opaquely so we keep it loose. */
+export type SyncLogRow = {
+  id: number;
+  ts: string;
+  level: string;
+  message: string;
 };
