@@ -184,7 +184,13 @@ function SyncRunRow({
   liveRunId?: string | null;
   liveLogs?: SyncLogRow[];
 }) {
-  const isLive = run.status === 'running' || liveRunId === run.id;
+  // "isLive" — the badge / duration text — follows SERVER truth so that
+  // when the worker flips status to success/failed, the row updates
+  // immediately on next refetch. The separate `liveRunId` only governs
+  // whether the EXPANDED log panel should append live SSE-streamed lines
+  // (see liveLogs prop below) — it must NOT keep the Running badge alive
+  // past the actual end of the run.
+  const isLive = run.status === 'running';
   const duration =
     run.finishedAt && run.startedAt
       ? formatDuration(new Date(run.finishedAt).getTime() - new Date(run.startedAt).getTime())

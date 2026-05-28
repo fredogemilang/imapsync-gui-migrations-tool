@@ -85,6 +85,11 @@ export function YourMigration() {
   const [liveRunId, setLiveRunId] = useState<string | null>(null);
   const [liveLogs, setLiveLogs] = useState<SyncLogRow[]>([]);
   const [syncHistoryRefreshKey, setSyncHistoryRefreshKey] = useState(0);
+  // The SSE handler is registered once on mount and reads liveRunId from
+  // its closure — which never updates. We mirror the latest value into a
+  // ref so handler logic can compare against the current run id. Same
+  // story for the appended-logs accumulator.
+  const liveRunIdRef = useRef<string | null>(null);
   const liveLogsRef = useRef<SyncLogRow[]>([]);
 
   useEffect(() => {
@@ -99,13 +104,14 @@ export function YourMigration() {
       }
       if (!data?.syncTick) return;
       if (data.kind === 'sync-run-started' && data.runId) {
+        liveRunIdRef.current = data.runId as string;
         setLiveRunId(data.runId as string);
         liveLogsRef.current = [];
         setLiveLogs([]);
         // Force the panel to re-pull so the newly-inserted 'running' row
         // appears at the top.
         setSyncHistoryRefreshKey((k) => k + 1);
-      } else if (data.kind === 'sync-run-log' && data.runId === liveRunId) {
+      } else if (data.kind === 'sync-run-log' && data.runId === liveRunIdRef.current) {
         const row: SyncLogRow = {
           id: Date.now() + Math.random(),
           ts: new Date().toISOString(),
@@ -120,16 +126,18 @@ export function YourMigration() {
         setLiveLogs(liveLogsRef.current);
       } else if (data.kind === 'sync-run-finished') {
         // Bump the panel refresh so it pulls the final status + counters.
+        // We KEEP liveRunId pointing at the just-finished run so that any
+        // residual live logs we streamed during it stay rendered in the
+        // expanded panel until the next sync-run-started clears them.
+        // The badge / duration row no longer depends on liveRunId — that's
+        // driven purely by the server-side row status (see SyncHistoryPanel).
         setSyncHistoryRefreshKey((k) => k + 1);
-        // Keep liveRunId set briefly so the panel can still render the
-        // accumulated live logs; clear on the next started event.
       }
     });
     // The browser hammers reconnect by default — that's fine; SSE is cheap.
     return () => {
       es.close();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   // --- Delete handler ----------------------------------------------------
