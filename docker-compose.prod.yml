@@ -34,10 +34,18 @@ services:
     # Healthcheck verifies the server is listening AFTER the entrypoint's
     # `drizzle-kit push --force` finishes — so dependents (worker) wait
     # for schema to be up-to-date before they start hitting the DB.
-    # Hits the no-auth /api/health endpoint and FAILS if it can't reach
-    # (different from the previous `|| true; exit 0` which always passed).
+    # Also required by Traefik (Dokploy) to register the api router —
+    # unhealthy containers are filtered out and would fall through to web.
+    # Uses node's built-in fetch (Node 20) since wget/curl aren't in the
+    # slim base image.
     healthcheck:
-      test: ['CMD-SHELL', 'wget -q --spider --tries=1 http://localhost:3000/api/health']
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 10s
       timeout: 5s
       retries: 30
