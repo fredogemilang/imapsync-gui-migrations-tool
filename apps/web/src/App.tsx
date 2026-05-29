@@ -12,6 +12,7 @@ import { YourMigration } from './pages/YourMigration';
 import { BulkStep1 } from './pages/BulkStep1';
 import { BulkStep2 } from './pages/BulkStep2';
 import { BulkStep3 } from './pages/BulkStep3';
+import { BulkSyncProgress } from './pages/BulkSyncProgress';
 import { YourBulkMigration } from './pages/YourBulkMigration';
 import { Settings } from './pages/Settings';
 import { ChangePassword } from './pages/ChangePassword';
@@ -67,6 +68,7 @@ export default function App() {
         <Route path="/bulk/new" element={<BulkStep1 />} />
         <Route path="/bulk/new/step2" element={<BulkStep2 />} />
         <Route path="/bulk/:id/progress" element={<BulkStep3 />} />
+        <Route path="/bulk/:id/sync/:sessionId/progress" element={<BulkSyncProgress />} />
         <Route path="/bulk/:id" element={<YourBulkMigration />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/change-password" element={<ChangePassword />} />

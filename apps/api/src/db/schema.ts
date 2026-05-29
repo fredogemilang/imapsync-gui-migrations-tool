@@ -143,6 +143,42 @@ export const bulkPair = pgTable('bulk_pair', {
 });
 
 /**
+ * Bulk-level sync SESSION — groups N per-pair sync runs that were
+ * triggered together. One row per:
+ *   - manual: one Sync Now click (clear batch)
+ *   - auto/backup: one "tick cycle" (all pairs that scheduled within a
+ *     30-min window of the same trigger join the same session)
+ *
+ * The UI shows this as a Sync History table at /bulk/:id, and the live
+ * progress page at /bulk/:id/sync/:sessionId/progress drills into a
+ * single session. The Sync Now button is disabled while there's a
+ * status='running' session of type='manual' for the same bulk so the
+ * user can't double-fire batches.
+ *
+ * Single migrations don't use sessions — they have at most one sync
+ * running at a time (migration.syncRunning guard). So bulkId is the
+ * only FK here.
+ */
+export const bulkSyncSession = pgTable('bulk_sync_session', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  bulkId: uuid('bulk_id')
+    .notNull()
+    .references(() => bulkMigration.id, { onDelete: 'cascade' }),
+  /** 'manual' | 'auto' | 'backup' */
+  type: text('type').notNull(),
+  /** 'running' | 'finished' | 'failed' | 'cancelled' */
+  status: text('status').notNull().default('running'),
+  startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  /** Number of pairs this session is expected to cover. For manual,
+   *  populated upfront at enqueue. For auto/backup, incremented as
+   *  pairs attach themselves to the session. */
+  totalPairs: integer('total_pairs').notNull().default(0),
+  finishedPairs: integer('finished_pairs').notNull().default(0),
+  failedPairs: integer('failed_pairs').notNull().default(0),
+});
+
+/**
  * One row per sync run (delta sync — single migration or bulk pair —
  * whether triggered by Auto Sync, Backup Mode, or one-off Sync Now).
  *
@@ -154,13 +190,19 @@ export const bulkPair = pgTable('bulk_pair', {
  * run belongs to either a single migration or a bulk pair. Cascade FK so
  * deleting the parent purges all runs (and their logs in turn).
  *
- * Declared AFTER bulkPair so the FKs resolve without forward refs.
+ * For bulk pair runs, sessionId groups N runs that ran as part of one
+ * Sync Now click or one tick cycle (NULL for single-migration runs and
+ * for legacy rows from before sessions landed).
+ *
+ * Declared AFTER bulkPair + bulkSyncSession so the FKs resolve without
+ * forward refs.
  */
 export const syncRun = pgTable('sync_run', {
   id: uuid('id').defaultRandom().primaryKey(),
   migrationId: uuid('migration_id').references(() => migration.id, { onDelete: 'cascade' }),
   bulkId: uuid('bulk_id').references(() => bulkMigration.id, { onDelete: 'cascade' }),
   bulkPairId: integer('bulk_pair_id').references(() => bulkPair.id, { onDelete: 'cascade' }),
+  sessionId: uuid('session_id').references(() => bulkSyncSession.id, { onDelete: 'cascade' }),
   /** 'auto' | 'backup' | 'manual' — derived from migration/bulk sync state. */
   trigger: text('trigger').notNull().default('auto'),
   /** 'running' | 'success' | 'failed' */

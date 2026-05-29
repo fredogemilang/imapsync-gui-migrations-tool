@@ -1,6 +1,6 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { bulkMigration, bulkPair } from '../db/schema.js';
+import { bulkMigration, bulkPair, bulkSyncSession } from '../db/schema.js';
 import { bulkPairSyncJobId, bulkPairSyncQueue, SYNC_INTERVALS } from './queue.js';
 
 /**
@@ -110,8 +110,12 @@ export async function reconcileBulkPairSyncs(bulkId: string): Promise<{
 }
 
 /** Enqueue a one-off "Sync Now" pass — used by the YourBulkMigration
- *  page's button. Fires for every completed pair, parallel. */
-export async function enqueueBulkSyncNow(bulkId: string): Promise<number> {
+ *  page's button. Fires for every completed pair, parallel. Creates a
+ *  bulk_sync_session row up-front so the in-flight check (`hasRunningManualSession`)
+ *  can guard against double-fire. Returns the session id and pair count. */
+export async function enqueueBulkSyncNow(
+  bulkId: string,
+): Promise<{ sessionId: string; count: number }> {
   const pairs = await db
     .select({ id: bulkPair.id })
     .from(bulkPair)
@@ -121,14 +125,44 @@ export async function enqueueBulkSyncNow(bulkId: string): Promise<number> {
         inArray(bulkPair.status, ['completed', 'completed_with_errors']),
       ),
     );
+  // Open the session row BEFORE enqueueing so the API's in-flight guard
+  // sees it instantly — a second click before any worker has picked up
+  // the first job still finds the session row and gets the 409.
+  // totalPairs is set to the eligible-pair count so the worker can detect
+  // session completion as pairs finish.
+  const [session] = await db
+    .insert(bulkSyncSession)
+    .values({ bulkId, type: 'manual', status: 'running', totalPairs: pairs.length })
+    .returning({ id: bulkSyncSession.id });
+  const sessionId = session!.id;
   await Promise.all(
     pairs.map((p) =>
       bulkPairSyncQueue.add(
         'bulk-pair-manual-sync',
-        { bulkId, pairId: p.id, manual: true },
+        { bulkId, pairId: p.id, manual: true, sessionId },
         { removeOnComplete: 20, removeOnFail: 50 },
       ),
     ),
   );
-  return pairs.length;
+  return { sessionId, count: pairs.length };
+}
+
+/** True when there's already a status='running' manual session for this
+ *  bulk. The Sync Now endpoint uses this to refuse double-clicks; the
+ *  worker also writes to the same row so the read here can race the
+ *  finalisation harmlessly (worst case: false-true returns 409, user
+ *  refreshes and sees the just-finished row). */
+export async function hasRunningManualSession(bulkId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: bulkSyncSession.id })
+    .from(bulkSyncSession)
+    .where(
+      and(
+        eq(bulkSyncSession.bulkId, bulkId),
+        eq(bulkSyncSession.type, 'manual'),
+        eq(bulkSyncSession.status, 'running'),
+      ),
+    )
+    .limit(1);
+  return !!row;
 }

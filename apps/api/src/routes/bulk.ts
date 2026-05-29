@@ -2,12 +2,16 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
-import { bulkMigration, bulkPair, bulkPairLog, syncRun } from '../db/schema.js';
+import { bulkMigration, bulkPair, bulkPairLog, bulkSyncSession, syncRun } from '../db/schema.js';
 import { encrypt } from '../lib/crypto.js';
 import { bulkPairSyncJobId, bulkPairSyncQueue, bulkQueue } from '../lib/queue.js';
 import { redis } from '../lib/redis.js';
 import { subscribeSSE } from '../lib/sse-bus.js';
-import { enqueueBulkSyncNow, reconcileBulkPairSyncs } from '../lib/bulk-sync.js';
+import {
+  enqueueBulkSyncNow,
+  hasRunningManualSession,
+  reconcileBulkPairSyncs,
+} from '../lib/bulk-sync.js';
 
 const BULK_TERMINAL = ['completed', 'completed_with_errors', 'failed', 'cancelled'] as const;
 
@@ -111,7 +115,9 @@ export async function bulkRoutes(app: FastifyInstance) {
   );
 
   // One-off "Sync Now" — enqueues a sync job for every completed pair
-  // (parallel). Returns the count so the UI can show "Syncing N mailboxes".
+  // (parallel). Refuses if there's already a running manual session for
+  // this bulk so the user can't double-fire a batch (e.g. impatient
+  // re-clicks while the worker is still scanning).
   app.post(
     '/api/bulk-migrations/:id/sync/now',
     { preHandler: [app.requireAuth] },
@@ -119,13 +125,26 @@ export async function bulkRoutes(app: FastifyInstance) {
       const id = (req.params as any).id as string;
       const [b] = await db.select().from(bulkMigration).where(eq(bulkMigration.id, id)).limit(1);
       if (!b) return reply.code(404).send({ error: 'Not found' });
-      const count = await enqueueBulkSyncNow(id);
+      // Guard against double-fire. The UI also disables the button when
+      // session.status='running', but a stale tab could still POST so we
+      // enforce server-side too.
+      if (await hasRunningManualSession(id)) {
+        return reply.code(409).send({
+          error: 'A Sync Now session is already running for this bulk. Wait for it to finish.',
+        });
+      }
+      const { sessionId, count } = await enqueueBulkSyncNow(id);
       if (count === 0) {
+        // Roll back the session row we just created — there's nothing to do.
+        await db
+          .delete(bulkSyncSession)
+          .where(eq(bulkSyncSession.id, sessionId))
+          .catch(() => {});
         return reply
           .code(409)
           .send({ error: 'No completed pairs to sync. Wait for the initial migration to finish.' });
       }
-      return { ok: true, count };
+      return { ok: true, count, sessionId };
     },
   );
 
@@ -274,7 +293,27 @@ export async function bulkRoutes(app: FastifyInstance) {
     }
     const syncHealth: 'healthy' | 'degraded' = failingPairs.length > 0 ? 'degraded' : 'healthy';
 
-    return { ...b, pairs, syncHealth, failingSyncPairs: failingPairs };
+    // Active manual session (if any) — drives the Sync Now button's
+    // disabled state in the UI.
+    const [activeManual] = await db
+      .select({ id: bulkSyncSession.id })
+      .from(bulkSyncSession)
+      .where(
+        and(
+          eq(bulkSyncSession.bulkId, id),
+          eq(bulkSyncSession.type, 'manual'),
+          eq(bulkSyncSession.status, 'running'),
+        ),
+      )
+      .limit(1);
+
+    return {
+      ...b,
+      pairs,
+      syncHealth,
+      failingSyncPairs: failingPairs,
+      activeManualSessionId: activeManual?.id ?? null,
+    };
   });
 
   // -------- Initial migration logs (per-pair) -----------------------------
@@ -375,6 +414,63 @@ export async function bulkRoutes(app: FastifyInstance) {
         .orderBy(desc(bulkPairLog.ts))
         .limit(500);
       return rows;
+    },
+  );
+
+  // -------- Sync sessions (bulk-level) ------------------------------------
+  // List recent sync sessions for one bulk, newest first. Each session
+  // represents a batch (Sync Now click) or a tick cycle (Auto/Backup
+  // pairs ticking within a 30-min window). The UI's History table at
+  // /bulk/:id queries this to render type / status / timestamps and
+  // links into the per-session progress page.
+  app.get(
+    '/api/bulk-migrations/:id/sync-sessions',
+    { preHandler: [app.requireAuth] },
+    async (req) => {
+      const id = (req.params as any).id as string;
+      const rows = await db
+        .select()
+        .from(bulkSyncSession)
+        .where(eq(bulkSyncSession.bulkId, id))
+        .orderBy(desc(bulkSyncSession.startedAt))
+        .limit(50);
+      return rows;
+    },
+  );
+
+  // Detail for one session — session row + every sync_run row that
+  // belongs to it (with pair source/target usernames joined in). The
+  // progress page at /bulk/:id/sync/:sessionId/progress uses this for
+  // both initial render and polling.
+  app.get(
+    '/api/bulk-migrations/:id/sync-sessions/:sessionId',
+    { preHandler: [app.requireAuth] },
+    async (req, reply) => {
+      const { id, sessionId } = req.params as any;
+      const [session] = await db
+        .select()
+        .from(bulkSyncSession)
+        .where(and(eq(bulkSyncSession.id, sessionId), eq(bulkSyncSession.bulkId, id)))
+        .limit(1);
+      if (!session) return reply.code(404).send({ error: 'Session not found' });
+      const runs = await db
+        .select({
+          id: syncRun.id,
+          bulkPairId: syncRun.bulkPairId,
+          status: syncRun.status,
+          startedAt: syncRun.startedAt,
+          finishedAt: syncRun.finishedAt,
+          migratedEmails: syncRun.migratedEmails,
+          migratedBytes: syncRun.migratedBytes,
+          errorMessage: syncRun.errorMessage,
+          sourceUsername: bulkPair.sourceUsername,
+          targetUsername: bulkPair.targetUsername,
+        })
+        .from(syncRun)
+        .leftJoin(bulkPair, eq(bulkPair.id, syncRun.bulkPairId))
+        .where(eq(syncRun.sessionId, sessionId))
+        .orderBy(desc(syncRun.startedAt));
+      return { ...session, runs };
     },
   );
 

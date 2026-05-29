@@ -131,9 +131,16 @@ export const api = {
       { method: 'PATCH', body: JSON.stringify(patch) },
     ),
   bulkSyncNow: (id: string) =>
-    request<{ ok: boolean; count: number }>(`/api/bulk-migrations/${id}/sync/now`, {
-      method: 'POST',
-    }),
+    request<{ ok: boolean; count: number; sessionId: string }>(
+      `/api/bulk-migrations/${id}/sync/now`,
+      { method: 'POST' },
+    ),
+  listBulkSyncSessions: (id: string) =>
+    request<BulkSyncSession[]>(`/api/bulk-migrations/${id}/sync-sessions`),
+  getBulkSyncSession: (id: string, sessionId: string) =>
+    request<BulkSyncSession & { runs: BulkSyncSessionRun[] }>(
+      `/api/bulk-migrations/${id}/sync-sessions/${sessionId}`,
+    ),
   /** List sync runs for one bulk pair (latest 50, newest first). */
   listBulkPairSyncRuns: (bulkId: string, pairId: number) =>
     request<SyncRun[]>(`/api/bulk-migrations/${bulkId}/pairs/${pairId}/sync-runs`),
@@ -204,4 +211,33 @@ export type SyncLogRow = {
   ts: string;
   level: string;
   message: string;
+};
+
+/** Bulk-level sync session — groups N per-pair sync runs that ran as
+ *  one batch (Sync Now) or one tick cycle (Auto/Backup). */
+export type BulkSyncSession = {
+  id: string;
+  bulkId: string;
+  type: 'manual' | 'auto' | 'backup' | string;
+  status: 'running' | 'finished' | 'failed' | 'cancelled' | string;
+  startedAt: string;
+  finishedAt: string | null;
+  totalPairs: number;
+  finishedPairs: number;
+  failedPairs: number;
+};
+
+/** Per-pair sync_run row within a session, with the pair's source/target
+ *  usernames joined in for the progress table. */
+export type BulkSyncSessionRun = {
+  id: string;
+  bulkPairId: number;
+  status: 'running' | 'success' | 'failed' | string;
+  startedAt: string;
+  finishedAt: string | null;
+  migratedEmails: number;
+  migratedBytes: number;
+  errorMessage: string | null;
+  sourceUsername: string | null;
+  targetUsername: string | null;
 };

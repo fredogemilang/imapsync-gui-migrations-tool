@@ -11,7 +11,7 @@ import {
   Search,
   XCircle,
 } from 'lucide-react';
-import { api, type SyncLogRow } from '@/lib/api';
+import { api, type BulkSyncSession, type SyncLogRow } from '@/lib/api';
 import { cn, formatBytes } from '@/lib/utils';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { Switch } from '@/components/ui/Switch';
@@ -72,6 +72,9 @@ type BulkData = {
    *  OR 3 consecutive auto/backup failures. Auto-clears on next success. */
   syncHealth?: 'healthy' | 'degraded';
   failingSyncPairs?: { pairId: number; lastError: string | null; trigger: string }[];
+  /** Active manual sync session id (if any). Sync Now button is disabled
+   *  while non-null; click it again to navigate to the in-flight session. */
+  activeManualSessionId?: string | null;
 };
 
 const LIVE_STATUSES = ['queued', 'scanning', 'running', 'paused'] as const;
@@ -456,8 +459,13 @@ export function YourBulkMigration() {
       <BulkSettingsCard
         bulkId={id!}
         settings={settings}
+        activeManualSessionId={data.activeManualSessionId}
         onChange={(merged) => setData((d) => (d ? { ...d, settings: merged } : d))}
       />
+
+      {/* Sync History — list recent batches (manual + auto/backup ticks).
+          Click a row to open its live progress page. */}
+      <SyncSessionsTable bulkId={id!} />
 
       {/* Modals */}
       {detailsFor && (
@@ -1107,15 +1115,160 @@ function KV({ label, children }: { label: string; children: React.ReactNode }) {
  * because they apply to every future per-pair sync tick via the
  * `bulk-pair-sync` worker.
  */
+/**
+ * Sync History table at /bulk/:id. Each row = one sync session (Sync
+ * Now batch, Auto Sync tick, or Backup Mode tick). Click navigates to
+ * the per-session live progress page.
+ *
+ * Polls every 5s while there are any 'running' sessions (so finished
+ * status flips visibly without a manual refresh); otherwise loads once.
+ */
+function SyncSessionsTable({ bulkId }: { bulkId: string }) {
+  const navigate = useNavigate();
+  const [sessions, setSessions] = useState<BulkSyncSession[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchSessions = async () => {
+    try {
+      const rows = await api.listBulkSyncSessions(bulkId);
+      setSessions(rows);
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message ?? 'Failed to load sync sessions');
+    }
+  };
+
+  useEffect(() => {
+    void fetchSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bulkId]);
+
+  const hasRunning = (sessions ?? []).some((s) => s.status === 'running');
+  useEffect(() => {
+    if (!hasRunning) return;
+    const t = setInterval(fetchSessions, 5000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasRunning]);
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-primary-dark font-extrabold text-lg">Sync History:</h3>
+      <div className="border border-slate-200/80 rounded-xl bg-white shadow-sm overflow-hidden">
+        {error ? (
+          <div className="p-5 text-sm text-red-700 bg-red-50">{error}</div>
+        ) : sessions === null ? (
+          <div className="p-5 flex items-center gap-2 text-slate-500 text-sm">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading sync sessions…
+          </div>
+        ) : sessions.length === 0 ? (
+          <div className="p-8 text-center text-slate-400 italic text-sm font-medium">
+            No sync sessions yet. Click <strong>Sync Now</strong> or enable Auto Sync / Backup Mode
+            to start.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left min-w-[640px]">
+              <thead>
+                <tr className="bg-slate-50/20 border-b border-slate-100 text-slate-400 font-extrabold text-[10px] uppercase tracking-wider">
+                  <th className="py-2.5 px-4">Type</th>
+                  <th className="py-2.5 px-4">Status</th>
+                  <th className="py-2.5 px-4">Started</th>
+                  <th className="py-2.5 px-4">Finished</th>
+                  <th className="py-2.5 px-4 text-right">Pairs</th>
+                  <th className="py-2.5 px-4" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50 text-[13px]">
+                {sessions.map((s) => (
+                  <SessionRow
+                    key={s.id}
+                    session={s}
+                    onClick={() => navigate(`/bulk/${bulkId}/sync/${s.id}/progress`)}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SessionRow({ session, onClick }: { session: BulkSyncSession; onClick: () => void }) {
+  const typeLabel =
+    session.type === 'manual'
+      ? '1-time Sync'
+      : session.type === 'backup'
+        ? 'Backup Mode'
+        : session.type === 'auto'
+          ? 'Auto Sync'
+          : session.type;
+  return (
+    <tr
+      onClick={onClick}
+      className="hover:bg-slate-50/65 cursor-pointer transition-colors font-medium text-slate-700"
+    >
+      <td className="py-3 px-4 font-bold text-primary text-[13px]">{typeLabel}</td>
+      <td className="py-3 px-4">
+        <SessionStatusInline status={session.status} />
+      </td>
+      <td className="py-3 px-4 text-slate-500 text-xs">
+        {new Date(session.startedAt).toLocaleString()}
+      </td>
+      <td className="py-3 px-4 text-slate-500 text-xs">
+        {session.finishedAt ? new Date(session.finishedAt).toLocaleString() : '—'}
+      </td>
+      <td className="py-3 px-4 text-right text-slate-600 text-xs font-bold">
+        {session.finishedPairs}/{session.totalPairs}
+        {session.failedPairs > 0 && (
+          <span className="text-red-600 ml-1">({session.failedPairs} failed)</span>
+        )}
+      </td>
+      <td className="py-3 px-4 text-right text-primary text-xs font-bold">View →</td>
+    </tr>
+  );
+}
+
+function SessionStatusInline({ status }: { status: string }) {
+  const meta = (() => {
+    switch (status) {
+      case 'running':
+        return { label: 'Running', dot: 'bg-blue-500', text: 'text-blue-600', pulse: true };
+      case 'finished':
+        return { label: 'Finished', dot: 'bg-emerald-500', text: 'text-emerald-600', pulse: false };
+      case 'failed':
+        return { label: 'Failed', dot: 'bg-red-500', text: 'text-red-600', pulse: false };
+      case 'cancelled':
+        return { label: 'Cancelled', dot: 'bg-slate-400', text: 'text-slate-500', pulse: false };
+      default:
+        return { label: status, dot: 'bg-slate-400', text: 'text-slate-500', pulse: false };
+    }
+  })();
+  return (
+    <span className={cn('text-[11px] font-bold flex items-center gap-1.5', meta.text)}>
+      <span className={cn('w-1.5 h-1.5 rounded-full', meta.dot, meta.pulse && 'animate-pulse')} />
+      {meta.label}
+    </span>
+  );
+}
+
 function BulkSettingsCard({
   bulkId,
   settings,
+  activeManualSessionId,
   onChange,
 }: {
   bulkId: string;
   settings: Record<string, any>;
+  /** When set, a Sync Now batch is currently in flight. Button is disabled
+   *  with tooltip + visible link to the live progress page. */
+  activeManualSessionId?: string | null;
   onChange: (merged: Record<string, any>) => void;
 }) {
+  const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [syncBusy, setSyncBusy] = useState(false);
@@ -1207,10 +1360,9 @@ function BulkSettingsCard({
     setSyncMsg(null);
     try {
       const r = await api.bulkSyncNow(bulkId);
-      setSyncMsg({
-        kind: 'success',
-        text: `Syncing ${r.count} mailbox${r.count === 1 ? '' : 'es'} now…`,
-      });
+      // Jump straight into the live progress page for the new session so
+      // the user sees the answer to "is it actually running?" immediately.
+      navigate(`/bulk/${bulkId}/sync/${r.sessionId}/progress`);
     } catch (e: any) {
       setSyncMsg({ kind: 'error', text: e?.message ?? 'Sync Now failed' });
     } finally {
@@ -1296,18 +1448,39 @@ function BulkSettingsCard({
             </div>
           )}
 
-          {/* Sync Now CTA */}
-          <button
-            onClick={onSyncNow}
-            disabled={syncBusy}
-            className="w-full bg-primary-container hover:bg-primary-dark text-white rounded-xl py-3.5 flex items-center justify-center font-bold text-[15px] shadow-sm cursor-pointer transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <RefreshCw
-              className={cn('h-5 w-5 mr-2', syncBusy && 'animate-spin')}
-              strokeWidth={2.5}
-            />
-            {syncBusy ? 'Queueing sync jobs…' : 'Sync Now'}
-          </button>
+          {/* Sync Now CTA. Disabled while there's an in-flight manual
+              session (prevents double-fire); shows a separate "View
+              progress" link so the user can jump to the running batch. */}
+          {activeManualSessionId ? (
+            <div className="space-y-2">
+              <button
+                disabled
+                title="A Sync Now batch is already running for this bulk."
+                className="w-full bg-slate-300 text-white rounded-xl py-3.5 flex items-center justify-center font-bold text-[15px] cursor-not-allowed"
+              >
+                <RefreshCw className="h-5 w-5 mr-2 animate-spin" strokeWidth={2.5} />
+                Sync Now is running…
+              </button>
+              <button
+                onClick={() => navigate(`/bulk/${bulkId}/sync/${activeManualSessionId}/progress`)}
+                className="w-full bg-white border border-primary/30 text-primary hover:bg-primary/5 rounded-xl py-2.5 flex items-center justify-center font-bold text-sm transition-colors"
+              >
+                View live progress →
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={onSyncNow}
+              disabled={syncBusy}
+              className="w-full bg-primary-container hover:bg-primary-dark text-white rounded-xl py-3.5 flex items-center justify-center font-bold text-[15px] shadow-sm cursor-pointer transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <RefreshCw
+                className={cn('h-5 w-5 mr-2', syncBusy && 'animate-spin')}
+                strokeWidth={2.5}
+              />
+              {syncBusy ? 'Queueing sync jobs…' : 'Sync Now'}
+            </button>
+          )}
           {syncMsg && (
             <p
               className={cn(

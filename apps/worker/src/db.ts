@@ -99,6 +99,21 @@ export const bulkPair = pgTable('bulk_pair', {
   error: text('error'),
 });
 
+// Bulk-level sync session — groups per-pair sync runs from one batch
+// (manual Sync Now) or one tick cycle (auto/backup). Mirrors
+// apps/api/src/db/schema.ts.
+export const bulkSyncSession = pgTable('bulk_sync_session', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  bulkId: uuid('bulk_id').notNull(),
+  type: text('type').notNull(),
+  status: text('status').notNull(),
+  startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
+  finishedAt: timestamp('finished_at', { withTimezone: true }),
+  totalPairs: integer('total_pairs').notNull().default(0),
+  finishedPairs: integer('finished_pairs').notNull().default(0),
+  failedPairs: integer('failed_pairs').notNull().default(0),
+});
+
 // Sync history — one row per sync run (single migration delta sync OR
 // bulk pair delta sync). Worker inserts at the start of each sync and
 // updates finishedAt + status + counters at the end. Mirrors
@@ -108,6 +123,7 @@ export const syncRun = pgTable('sync_run', {
   migrationId: uuid('migration_id'),
   bulkId: uuid('bulk_id'),
   bulkPairId: integer('bulk_pair_id'),
+  sessionId: uuid('session_id'),
   trigger: text('trigger').notNull(),
   status: text('status').notNull(),
   startedAt: timestamp('started_at', { withTimezone: true }).defaultNow().notNull(),
