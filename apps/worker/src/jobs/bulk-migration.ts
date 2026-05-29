@@ -412,10 +412,39 @@ export async function handleBulkMigration(job: Job<{ bulkId: string; pairIds?: n
     await cancelSub.unsubscribe(cancelChannel).catch(() => {});
   }
 
-  // For per-pair retries, leave the bulk-level status alone — the bulk
-  // already finished long ago, and the retry job is just refreshing one
-  // pair's row. Emit a status event so the UI can refetch the bulk + pairs.
+  // For per-pair retries, re-evaluate the bulk-level status from the
+  // CURRENT pair statuses (not the just-retried subset). A successful
+  // retry that turned the only failing pair into 'completed' should
+  // flip the bulk from 'completed_with_errors' back to 'completed' so
+  // the header banner clears. Conversely, retrying a still-broken pair
+  // leaves the bulk where it was.
   if (isRetry) {
+    const allPairs = await db
+      .select({ status: bulkPair.status })
+      .from(bulkPair)
+      .where(eq(bulkPair.bulkId, id));
+    const total = allPairs.length;
+    const clean = allPairs.filter((p) => p.status === 'completed').length;
+    const partial = allPairs.filter((p) => p.status === 'completed_with_errors').length;
+    const failed = allPairs.filter((p) => p.status === 'failed').length;
+    const cancelledN = allPairs.filter((p) => p.status === 'cancelled').length;
+    const stillInFlight = total - clean - partial - failed - cancelledN;
+
+    let bulkStatus: 'completed' | 'completed_with_errors' | 'failed' | 'cancelled' | null = null;
+    if (stillInFlight === 0) {
+      if (clean === total) bulkStatus = 'completed';
+      else if (clean + partial === total) bulkStatus = 'completed_with_errors';
+      else if (failed === total) bulkStatus = 'failed';
+      else if (clean + partial > 0) bulkStatus = 'completed_with_errors';
+      else bulkStatus = 'cancelled';
+    }
+    if (bulkStatus) {
+      await db
+        .update(bulkMigration)
+        .set({ status: bulkStatus })
+        .where(eq(bulkMigration.id, id));
+      publish(id, { kind: 'status', status: bulkStatus });
+    }
     publish(id, {
       kind: 'retry-finished',
       pairIds: retryPairIds,
