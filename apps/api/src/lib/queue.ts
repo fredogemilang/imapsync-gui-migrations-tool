@@ -25,8 +25,40 @@ export function bulkPairSyncJobId(pairId: number): string {
 
 /** Interval shortcuts in milliseconds. */
 export const SYNC_INTERVALS = {
+  AUTO_SYNC_15M: 15 * 60 * 1000,
+  AUTO_SYNC_30M: 30 * 60 * 1000,
+  AUTO_SYNC_1H: 60 * 60 * 1000,
   AUTO_SYNC_3H: 3 * 60 * 60 * 1000,
+  AUTO_SYNC_6H: 6 * 60 * 60 * 1000,
   DAILY: 24 * 60 * 60 * 1000,
   WEEKLY: 7 * 24 * 60 * 60 * 1000,
   MONTHLY: 30 * 24 * 60 * 60 * 1000,
 } as const;
+
+/** Default Auto Sync interval when settings.autoSyncInterval isn't set.
+ *  Picked at 1h after observing 3h was too laggy for transition-window
+ *  use cases (the user has 10 days of Auto Sync running and wants new
+ *  mail to land on the target reasonably fast). */
+export const DEFAULT_AUTO_SYNC_INTERVAL = SYNC_INTERVALS.AUTO_SYNC_1H;
+
+/** Auto Sync interval enum → ms. Falls back to DEFAULT_AUTO_SYNC_INTERVAL
+ *  for unknown/missing values so the UI can store strings without us
+ *  hard-failing on legacy rows. */
+export function autoSyncIntervalMs(
+  interval: '15min' | '30min' | '1h' | '3h' | '6h' | undefined,
+): number {
+  switch (interval) {
+    case '15min':
+      return SYNC_INTERVALS.AUTO_SYNC_15M;
+    case '30min':
+      return SYNC_INTERVALS.AUTO_SYNC_30M;
+    case '1h':
+      return SYNC_INTERVALS.AUTO_SYNC_1H;
+    case '3h':
+      return SYNC_INTERVALS.AUTO_SYNC_3H;
+    case '6h':
+      return SYNC_INTERVALS.AUTO_SYNC_6H;
+    default:
+      return DEFAULT_AUTO_SYNC_INTERVAL;
+  }
+}

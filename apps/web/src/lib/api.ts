@@ -99,7 +99,11 @@ export const api = {
     request<{ ok: boolean; deleted: number }>('/api/migrations', { method: 'DELETE' }),
   getLogs: (id: string) => request<any[]>(`/api/migrations/${id}/logs`),
 
-  enableSync: (id: string, mode: 'auto' | 'backup', interval?: 'daily' | 'weekly' | 'monthly') =>
+  enableSync: (
+    id: string,
+    mode: 'auto' | 'backup',
+    interval?: '15min' | '30min' | '1h' | '3h' | '6h' | 'daily' | 'weekly' | 'monthly',
+  ) =>
     request<{ ok: boolean; intervalMs: number; endsAt: string | null }>(
       `/api/migrations/${id}/sync/enable`,
       { method: 'POST', body: JSON.stringify({ mode, interval }) },

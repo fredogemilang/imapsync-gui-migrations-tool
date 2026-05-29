@@ -1,7 +1,12 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { bulkMigration, bulkPair, bulkSyncSession } from '../db/schema.js';
-import { bulkPairSyncJobId, bulkPairSyncQueue, SYNC_INTERVALS } from './queue.js';
+import {
+  autoSyncIntervalMs,
+  bulkPairSyncJobId,
+  bulkPairSyncQueue,
+  SYNC_INTERVALS,
+} from './queue.js';
 
 /**
  * Bulk → per-pair sync orchestration.
@@ -20,7 +25,6 @@ import { bulkPairSyncJobId, bulkPairSyncQueue, SYNC_INTERVALS } from './queue.js
  * earlier schedule for that pair cleanly.
  */
 
-const AUTO_SYNC_INTERVAL = SYNC_INTERVALS.AUTO_SYNC_3H;
 const AUTO_SYNC_DURATION = 10 * 24 * 60 * 60 * 1000;
 
 function backupIntervalMs(interval: unknown): number {
@@ -42,9 +46,12 @@ function resolveSchedule(settings: Record<string, unknown>): {
   if (backupMode) {
     return { mode: 'backup', intervalMs: backupIntervalMs(settings.backupInterval), endsAt: null };
   }
+  // Auto Sync — pick interval from settings (default 1h) and arm for 10 days.
   return {
     mode: 'auto',
-    intervalMs: AUTO_SYNC_INTERVAL,
+    intervalMs: autoSyncIntervalMs(
+      settings.autoSyncInterval as '15min' | '30min' | '1h' | '3h' | '6h' | undefined,
+    ),
     endsAt: new Date(Date.now() + AUTO_SYNC_DURATION),
   };
 }

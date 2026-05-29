@@ -4,7 +4,13 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { imapAccount, migration, migrationFolder, migrationLog, syncRun } from '../db/schema.js';
 import { encrypt } from '../lib/crypto.js';
-import { migrationQueue, syncQueue, syncJobId, SYNC_INTERVALS } from '../lib/queue.js';
+import {
+  autoSyncIntervalMs,
+  migrationQueue,
+  syncQueue,
+  syncJobId,
+  SYNC_INTERVALS,
+} from '../lib/queue.js';
 import { redis } from '../lib/redis.js';
 import { subscribeSSE } from '../lib/sse-bus.js';
 
@@ -13,8 +19,10 @@ const TERMINAL_STATUSES = ['completed', 'failed', 'cancelled'] as const;
 
 const EnableSyncBody = z.object({
   mode: z.enum(['auto', 'backup']),
-  /** Required for backup mode; ignored for auto (fixed 3h). */
-  interval: z.enum(['daily', 'weekly', 'monthly']).optional(),
+  /** Used for BOTH modes — the enum is wider here than each mode actually
+   *  accepts. For 'auto' valid values are the auto-set; for 'backup' the
+   *  backup-set. The endpoint picks the right resolver based on mode. */
+  interval: z.enum(['15min', '30min', '1h', '3h', '6h', 'daily', 'weekly', 'monthly']).optional(),
 });
 
 const ImapAccountInput = z.object({
@@ -296,7 +304,18 @@ export async function migrationRoutes(app: FastifyInstance) {
       let intervalMs: number;
       let endsAt: Date | null = null;
       if (body.mode === 'auto') {
-        intervalMs = SYNC_INTERVALS.AUTO_SYNC_3H;
+        // 'interval' restricted to auto-set values here; anything outside
+        // ('daily'/'weekly'/'monthly') falls back to the default (1h).
+        const autoCandidate = body.interval;
+        intervalMs = autoSyncIntervalMs(
+          autoCandidate === '15min' ||
+            autoCandidate === '30min' ||
+            autoCandidate === '1h' ||
+            autoCandidate === '3h' ||
+            autoCandidate === '6h'
+            ? autoCandidate
+            : undefined,
+        );
         endsAt = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000); // 10 days
       } else {
         // backup mode

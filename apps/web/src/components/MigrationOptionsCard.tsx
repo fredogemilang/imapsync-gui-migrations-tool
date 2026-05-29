@@ -32,6 +32,20 @@ function intervalFromMs(ms: number | null | undefined): 'daily' | 'weekly' | 'mo
   return 'daily';
 }
 
+/** Map the stored syncIntervalMs to the closest Auto Sync enum value when
+ *  hydrating the dropdown — useful for migrations created BEFORE the
+ *  autoSyncInterval setting existed. Defaults to '1h' (the new default). */
+function autoIntervalFromMs(ms: number | null | undefined): '15min' | '30min' | '1h' | '3h' | '6h' {
+  if (!ms) return '1h';
+  const MIN = 60 * 1000;
+  const HR = 60 * MIN;
+  if (ms <= 20 * MIN) return '15min';
+  if (ms <= 45 * MIN) return '30min';
+  if (ms <= 90 * MIN) return '1h';
+  if (ms <= 4 * HR) return '3h';
+  return '6h';
+}
+
 export function MigrationOptionsCard({
   data,
   id,
@@ -52,10 +66,23 @@ export function MigrationOptionsCard({
   const initialInterval: 'daily' | 'weekly' | 'monthly' =
     data.settings?.backupInterval ?? intervalFromMs(data.syncIntervalMs);
 
+  // Auto Sync interval — picker default '1h' to match the backend.
+  // We rebuild from migration.settings.autoSyncInterval (the same field
+  // also stored at create-wizard time) when set; otherwise fall back to
+  // mapping the server's syncIntervalMs to the closest enum value.
+  const initialAutoInterval: '15min' | '30min' | '1h' | '3h' | '6h' =
+    data.settings?.autoSyncInterval &&
+    /^(15min|30min|1h|3h|6h)$/.test(data.settings.autoSyncInterval)
+      ? data.settings.autoSyncInterval
+      : autoIntervalFromMs(data.syncIntervalMs);
+
   const [selectedMode, setSelectedMode] = useState<'auto' | 'backup'>(currentMode);
   const [selectedInterval, setSelectedInterval] = useState<'daily' | 'weekly' | 'monthly'>(
     initialInterval,
   );
+  const [selectedAutoInterval, setSelectedAutoInterval] = useState<
+    '15min' | '30min' | '1h' | '3h' | '6h'
+  >(initialAutoInterval);
   const [advancedOpen, setAdvancedOpen] = useState(false);
 
   // Keep local segmented-control state in sync with server-truth when `data`
@@ -64,8 +91,9 @@ export function MigrationOptionsCard({
   useEffect(() => {
     setSelectedMode(currentMode);
     setSelectedInterval(initialInterval);
+    setSelectedAutoInterval(initialAutoInterval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.syncMode, data.syncIntervalMs]);
+  }, [data.syncMode, data.syncIntervalMs, data.settings?.autoSyncInterval]);
 
   // Settings from the migration's stored settings
   const settings = (data.settings as any) ?? {};
@@ -79,7 +107,7 @@ export function MigrationOptionsCard({
         await api.enableSync(
           id,
           selectedMode,
-          selectedMode === 'backup' ? selectedInterval : undefined,
+          selectedMode === 'backup' ? selectedInterval : selectedAutoInterval,
         );
       }
       await onRefresh();
@@ -104,7 +132,7 @@ export function MigrationOptionsCard({
       // If sync is already enabled, switch mode immediately
       setBusy(true);
       try {
-        await api.enableSync(id, mode, mode === 'backup' ? selectedInterval : undefined);
+        await api.enableSync(id, mode, mode === 'backup' ? selectedInterval : selectedAutoInterval);
         await onRefresh();
       } finally {
         setBusy(false);
@@ -120,6 +148,20 @@ export function MigrationOptionsCard({
       setBusy(true);
       try {
         await api.enableSync(id, 'backup', interval);
+        await onRefresh();
+      } finally {
+        setBusy(false);
+      }
+    }
+  };
+
+  const onAutoIntervalChange = async (interval: '15min' | '30min' | '1h' | '3h' | '6h') => {
+    setSelectedAutoInterval(interval);
+    // Re-arm only when Auto Sync is the live mode.
+    if (syncEnabled && selectedMode === 'auto') {
+      setBusy(true);
+      try {
+        await api.enableSync(id, 'auto', interval);
         await onRefresh();
       } finally {
         setBusy(false);
@@ -180,14 +222,37 @@ export function MigrationOptionsCard({
               </div>
               <div className="hidden group-hover:block absolute right-0 bottom-full mb-2 w-64 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-lg z-20 leading-relaxed font-medium">
                 {selectedMode === 'auto'
-                  ? 'Automatically synchronize your emails every 3 hours for 10 days after migration.'
+                  ? 'Runs on the interval below for 10 days after migration. Shorter intervals catch new mail faster but generate more IMAP load.'
                   : "Permanently keep your target mailbox in sync. Deletions in source won't affect target."}
               </div>
             </div>
           </div>
 
-          {/* Backup interval picker — only relevant when Backup Mode is selected.
-              Auto Sync has a fixed 3-hour cadence so we hide the dropdown there. */}
+          {/* Auto Sync interval picker — only when Auto Sync is selected.
+              Default '1h'. Trades latency vs IMAP load on source/target. */}
+          {selectedMode === 'auto' && (
+            <div className="flex items-center justify-between border-b border-slate-100 pb-6 -mt-2">
+              <span className="text-primary font-medium text-[14px]">Sync interval</span>
+              <select
+                value={selectedAutoInterval}
+                disabled={busy}
+                onChange={(e) =>
+                  void onAutoIntervalChange(
+                    e.target.value as '15min' | '30min' | '1h' | '3h' | '6h',
+                  )
+                }
+                className="bg-white border border-slate-200/80 rounded-lg text-primary text-[14px] py-2 px-3 disabled:opacity-50"
+              >
+                <option value="15min">Every 15 minutes</option>
+                <option value="30min">Every 30 minutes</option>
+                <option value="1h">Every hour (recommended)</option>
+                <option value="3h">Every 3 hours</option>
+                <option value="6h">Every 6 hours</option>
+              </select>
+            </div>
+          )}
+
+          {/* Backup interval picker — only when Backup Mode is selected. */}
           {selectedMode === 'backup' && (
             <div className="flex items-center justify-between border-b border-slate-100 pb-6 -mt-2">
               <span className="text-primary font-medium text-[14px]">Backup interval</span>

@@ -291,6 +291,11 @@ export const notification = pgTable('notification', {
 export type MigrationSettings = {
   autoSync?: boolean;
   backupMode?: boolean;
+  /** Repeat interval when Auto Sync is enabled. Defaults to '1h' if unset.
+   *  Trade-off: shorter intervals catch new mail faster but generate more
+   *  IMAP connect load on source/target. 3h was the original conservative
+   *  default but 1h works fine for most self-hosted setups. */
+  autoSyncInterval?: '15min' | '30min' | '1h' | '3h' | '6h';
   /** Repeat interval when Backup Mode is enabled. Defaults to 'daily'. */
   backupInterval?: 'daily' | 'weekly' | 'monthly';
   throttleEnabled?: boolean;

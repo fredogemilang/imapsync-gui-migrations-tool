@@ -78,6 +78,7 @@ export async function bulkRoutes(app: FastifyInstance) {
     .object({
       autoSync: z.boolean().optional(),
       backupMode: z.boolean().optional(),
+      autoSyncInterval: z.enum(['15min', '30min', '1h', '3h', '6h']).optional(),
       backupInterval: z.enum(['daily', 'weekly', 'monthly']).optional(),
       throttleEnabled: z.boolean().optional(),
       throttleGbPerDay: z.number().optional(),

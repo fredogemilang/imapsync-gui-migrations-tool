@@ -1283,19 +1283,32 @@ function BulkSettingsCard({
     settings.backupInterval === 'weekly' || settings.backupInterval === 'monthly'
       ? settings.backupInterval
       : 'daily';
+  // Auto Sync interval — user-configurable (15min / 30min / 1h / 3h / 6h).
+  // Default '1h' when settings.autoSyncInterval is unset (matches backend).
+  const initialAutoInterval: '15min' | '30min' | '1h' | '3h' | '6h' =
+    settings.autoSyncInterval === '15min' ||
+    settings.autoSyncInterval === '30min' ||
+    settings.autoSyncInterval === '3h' ||
+    settings.autoSyncInterval === '6h'
+      ? settings.autoSyncInterval
+      : '1h';
 
   const [selectedMode, setSelectedMode] = useState<'auto' | 'backup'>(currentMode);
   const [selectedInterval, setSelectedInterval] = useState<'daily' | 'weekly' | 'monthly'>(
     initialInterval,
   );
+  const [selectedAutoInterval, setSelectedAutoInterval] = useState<
+    '15min' | '30min' | '1h' | '3h' | '6h'
+  >(initialAutoInterval);
 
   // Keep segmented-control + interval in sync with server-truth when the
   // settings prop changes (post-PATCH refresh or polling tick).
   useEffect(() => {
     setSelectedMode(currentMode);
     setSelectedInterval(initialInterval);
+    setSelectedAutoInterval(initialAutoInterval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.autoSync, settings.backupMode, settings.backupInterval]);
+  }, [settings.autoSync, settings.backupMode, settings.backupInterval, settings.autoSyncInterval]);
 
   /** Single source of truth for settings mutations. Optimistic update +
    *  PATCH; rollback on failure. The merged response from the server
@@ -1321,7 +1334,11 @@ function BulkSettingsCard({
       // Disable both → no sync.
       await patch({ autoSync: false, backupMode: false });
     } else if (selectedMode === 'auto') {
-      await patch({ autoSync: true, backupMode: false });
+      await patch({
+        autoSync: true,
+        backupMode: false,
+        autoSyncInterval: selectedAutoInterval,
+      });
     } else {
       await patch({
         autoSync: false,
@@ -1336,7 +1353,11 @@ function BulkSettingsCard({
     if (syncEnabled) {
       // Swap mode immediately if sync is currently on.
       if (mode === 'auto') {
-        await patch({ autoSync: true, backupMode: false });
+        await patch({
+          autoSync: true,
+          backupMode: false,
+          autoSyncInterval: selectedAutoInterval,
+        });
       } else {
         await patch({
           autoSync: false,
@@ -1352,6 +1373,14 @@ function BulkSettingsCard({
     // Only re-arm scheduler when backup mode is actively selected.
     if (syncEnabled && selectedMode === 'backup') {
       await patch({ backupInterval: interval });
+    }
+  };
+
+  const onAutoIntervalChange = async (interval: '15min' | '30min' | '1h' | '3h' | '6h') => {
+    setSelectedAutoInterval(interval);
+    // Re-arm only when Auto Sync is the live mode.
+    if (syncEnabled && selectedMode === 'auto') {
+      await patch({ autoSyncInterval: interval });
     }
   };
 
@@ -1423,11 +1452,36 @@ function BulkSettingsCard({
               </div>
               <div className="hidden group-hover:block absolute right-0 bottom-full mb-2 w-64 bg-slate-900 text-white text-[11px] p-2.5 rounded-lg shadow-lg z-20 leading-relaxed font-medium">
                 {selectedMode === 'auto'
-                  ? 'Every 3 hours for 10 days. Applies per mailbox pair after each pair completes.'
+                  ? 'Runs on the interval below for 10 days, per pair. Shorter intervals catch new mail faster but generate more IMAP load on source/target.'
                   : "Permanently keep target mailboxes in sync. Deletions in source won't affect target."}
               </div>
             </div>
           </div>
+
+          {/* Auto Sync interval picker — only relevant for auto mode.
+              Default 1h (matches backend). Shorter intervals = more load,
+              longer = more latency. */}
+          {selectedMode === 'auto' && (
+            <div className="flex items-center justify-between border-b border-slate-100 pb-6 -mt-2">
+              <span className="text-primary font-medium text-[14px]">Sync interval</span>
+              <select
+                value={selectedAutoInterval}
+                disabled={busy}
+                onChange={(e) =>
+                  void onAutoIntervalChange(
+                    e.target.value as '15min' | '30min' | '1h' | '3h' | '6h',
+                  )
+                }
+                className="bg-white border border-slate-200/80 rounded-lg text-primary text-[14px] py-2 px-3 disabled:opacity-50"
+              >
+                <option value="15min">Every 15 minutes</option>
+                <option value="30min">Every 30 minutes</option>
+                <option value="1h">Every hour (recommended)</option>
+                <option value="3h">Every 3 hours</option>
+                <option value="6h">Every 6 hours</option>
+              </select>
+            </div>
+          )}
 
           {/* Backup interval picker — only relevant for backup mode */}
           {selectedMode === 'backup' && (

@@ -13,11 +13,29 @@ import { env } from '../env.js';
 // Constants mirrored from apps/api/src/lib/queue.ts. Kept in sync via the
 // CI cross-package check (see check:crypto-sync style — same idea would
 // apply here if drift becomes a problem).
-const AUTO_SYNC_INTERVAL = 3 * 60 * 60 * 1000;
 const AUTO_SYNC_DURATION = 10 * 24 * 60 * 60 * 1000;
 const DAILY = 24 * 60 * 60 * 1000;
 const WEEKLY = 7 * DAILY;
 const MONTHLY = 30 * DAILY;
+
+/** Mirror of autoSyncIntervalMs in apps/api/src/lib/queue.ts. Falls back
+ *  to 1 hour for unknown/unset values — same default as the API side. */
+function autoSyncIntervalMs(interval: unknown): number {
+  switch (interval) {
+    case '15min':
+      return 15 * 60 * 1000;
+    case '30min':
+      return 30 * 60 * 1000;
+    case '1h':
+      return 60 * 60 * 1000;
+    case '3h':
+      return 3 * 60 * 60 * 1000;
+    case '6h':
+      return 6 * 60 * 60 * 1000;
+    default:
+      return 60 * 60 * 1000; // default 1h
+  }
+}
 
 const bulkPairSyncQueue = new Queue('bulk-pair-sync', {
   connection: new Redis({
@@ -45,7 +63,9 @@ async function applyPostBulkSync(bulkId: string): Promise<void> {
   const backupMode = settings.backupMode === true;
   if (!autoSync && !backupMode) return;
 
-  const intervalMs = backupMode ? backupIntervalMs(settings.backupInterval) : AUTO_SYNC_INTERVAL;
+  const intervalMs = backupMode
+    ? backupIntervalMs(settings.backupInterval)
+    : autoSyncIntervalMs(settings.autoSyncInterval);
   const endsAt = backupMode ? null : new Date(Date.now() + AUTO_SYNC_DURATION);
   const mode = backupMode ? 'backup' : 'auto';
 
