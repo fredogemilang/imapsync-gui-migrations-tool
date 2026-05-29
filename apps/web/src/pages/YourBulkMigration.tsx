@@ -45,6 +45,11 @@ type Pair = {
   progressPercent: number;
   totalEmails: number;
   migratedEmails: number;
+  migratedBytes?: number;
+  failedEmails?: number;
+  totalFolders?: number;
+  foldersSynced?: number;
+  exitCode?: number | null;
   syncEnabled?: boolean;
   backupEnabled?: boolean;
   error?: string | null;
@@ -197,15 +202,30 @@ export function YourBulkMigration() {
   );
 
   // ----- Derived stats ---------------------------------------------------
+  // "Completed" here means terminal success — clean completion OR
+  // completed_with_errors (the pair landed in target with partial loss
+  // documented in the modal). Both count as a successful run for the
+  // headline X/Y metric.
   const stats = useMemo(() => {
     const pairs = data?.pairs ?? [];
     const totalPairs = pairs.length;
-    const completedPairs = pairs.filter((p) => p.status === 'completed').length;
+    const completedPairs = pairs.filter(
+      (p) => p.status === 'completed' || p.status === 'completed_with_errors',
+    ).length;
+    const partialPairs = pairs.filter((p) => p.status === 'completed_with_errors').length;
     const failedPairs = pairs.filter((p) => p.status === 'failed').length;
     const cancelledPairs = pairs.filter((p) => p.status === 'cancelled').length;
     const totalEmails = pairs.reduce((a, p) => a + (p.totalEmails ?? 0), 0);
     const migratedEmails = pairs.reduce((a, p) => a + (p.migratedEmails ?? 0), 0);
-    return { totalPairs, completedPairs, failedPairs, cancelledPairs, totalEmails, migratedEmails };
+    return {
+      totalPairs,
+      completedPairs,
+      partialPairs,
+      failedPairs,
+      cancelledPairs,
+      totalEmails,
+      migratedEmails,
+    };
   }, [data]);
 
   const filtered = useMemo(() => {
@@ -318,6 +338,16 @@ export function YourBulkMigration() {
                   label={stats.totalPairs === 1 ? 'mailbox completed' : 'mailboxes completed'}
                 />
                 <StatBadge value={stats.migratedEmails.toLocaleString()} label="emails migrated" />
+                {stats.partialPairs > 0 && (
+                  <div className="flex items-center gap-3">
+                    <div className="bg-amber-500 rounded-full p-0.5 flex items-center justify-center shrink-0">
+                      <AlertTriangle className="h-4 w-4 text-white" strokeWidth={3} />
+                    </div>
+                    <div className="text-[15px] text-primary">
+                      <span className="font-bold">{stats.partialPairs}</span> with errors
+                    </div>
+                  </div>
+                )}
                 {stats.failedPairs > 0 && (
                   <div className="flex items-center gap-3">
                     <div className="bg-red-500 rounded-full p-0.5 flex items-center justify-center shrink-0">
@@ -412,6 +442,11 @@ export function YourBulkMigration() {
           bulkId={id!}
           pair={detailsFor}
           live={livePairs[detailsFor.id]}
+          onRetry={async (pairId) => {
+            await api.retryBulkPair(id!, pairId);
+            // Refresh so the pair flips to pending → running on next poll.
+            await refresh();
+          }}
           onClose={() => setDetailsFor(null)}
         />
       )}
@@ -627,6 +662,13 @@ function PairStatusBadge({ status }: { status: string }) {
           text: 'text-emerald-600',
           pulse: false,
         };
+      case 'completed_with_errors':
+        return {
+          label: 'Completed (with errors)',
+          dot: 'bg-amber-500',
+          text: 'text-amber-600',
+          pulse: false,
+        };
       case 'failed':
         return { label: 'Failed', dot: 'bg-red-500', text: 'text-red-600', pulse: false };
       case 'cancelled':
@@ -652,6 +694,7 @@ function PairDetailsModal({
   bulkId,
   pair,
   live,
+  onRetry,
   onClose,
 }: {
   bulkId: string;
@@ -659,6 +702,9 @@ function PairDetailsModal({
   /** Live sync state for this pair (current run id + streamed log lines).
    *  Undefined when no sync run has been observed since the page loaded. */
   live?: { runId: string | null; logs: SyncLogRow[]; refreshKey: number };
+  /** Invoked when the user clicks Retry on a failed / completed_with_errors
+   *  pair. Parent triggers the API call and refreshes the bulk on return. */
+  onRetry: (pairId: number) => Promise<void>;
   onClose: () => void;
 }) {
   // ESC closes
@@ -669,6 +715,28 @@ function PairDetailsModal({
   }, [onClose]);
 
   const remaining = Math.max(0, pair.totalEmails - pair.migratedEmails);
+  const [retryBusy, setRetryBusy] = useState(false);
+  const [retryMsg, setRetryMsg] = useState<{ kind: 'success' | 'error'; text: string } | null>(
+    null,
+  );
+
+  const canRetry = ['failed', 'completed_with_errors', 'cancelled'].includes(pair.status);
+
+  const doRetry = async () => {
+    setRetryBusy(true);
+    setRetryMsg(null);
+    try {
+      await onRetry(pair.id);
+      setRetryMsg({
+        kind: 'success',
+        text: 'Retry queued — the worker will re-run this pair shortly.',
+      });
+    } catch (e: any) {
+      setRetryMsg({ kind: 'error', text: e?.message ?? 'Retry failed' });
+    } finally {
+      setRetryBusy(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6">
@@ -694,25 +762,64 @@ function PairDetailsModal({
             <p className="text-sm font-bold text-primary-dark break-all">{pair.targetUsername}</p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          {/* Run summary metrics. Mirrors imapsync's end-of-run report so the
+              user can see at a glance what actually happened, instead of
+              reading the raw error string. Hidden columns degrade gracefully
+              when the worker didn't capture them (pre-stats migrations). */}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <KV label="Status">
               <PairStatusBadge status={pair.status} />
             </KV>
             <KV label="Progress">
               <span className="font-bold text-primary">{pair.progressPercent ?? 0}%</span>
             </KV>
-            <KV label="Migrated">
+            <KV label="Exit code">
+              <span
+                className={cn(
+                  'font-bold',
+                  pair.exitCode == null
+                    ? 'text-slate-400'
+                    : pair.exitCode === 0
+                      ? 'text-emerald-600'
+                      : 'text-amber-600',
+                )}
+              >
+                {pair.exitCode == null ? '—' : pair.exitCode}
+                {pair.exitCode === 0 && <span className="text-xs ml-1">(EX_OK)</span>}
+                {pair.exitCode === 115 && <span className="text-xs ml-1">(FETCH)</span>}
+              </span>
+            </KV>
+            <KV label="Folders synced">
+              <span className="font-bold text-primary">
+                {(pair.foldersSynced ?? 0).toLocaleString()}
+                {pair.totalFolders ? `/${pair.totalFolders.toLocaleString()}` : ''}
+              </span>
+            </KV>
+            <KV label="Messages migrated">
               <span className="font-bold text-primary">
                 {(pair.migratedEmails ?? 0).toLocaleString()}
               </span>
             </KV>
-            <KV label="Total emails">
+            <KV label="Messages failed">
+              <span
+                className={cn(
+                  'font-bold',
+                  (pair.failedEmails ?? 0) > 0 ? 'text-amber-600' : 'text-primary',
+                )}
+              >
+                {(pair.failedEmails ?? 0).toLocaleString()}
+              </span>
+            </KV>
+            <KV label="Total emails (source)">
               <span className="font-bold text-primary">
                 {(pair.totalEmails ?? 0).toLocaleString()}
               </span>
             </KV>
             <KV label="Remaining">
               <span className="font-bold text-primary">{remaining.toLocaleString()}</span>
+            </KV>
+            <KV label="Bytes transferred">
+              <span className="font-bold text-primary">{formatBytes(pair.migratedBytes ?? 0)}</span>
             </KV>
             <KV label="Sync / Backup">
               <span className="text-primary text-xs font-bold">
@@ -729,9 +836,44 @@ function PairDetailsModal({
             </div>
           )}
 
-          {/* Per-pair sync history. Only shown once the pair's initial copy
-              has succeeded — sync runs only make sense for completed pairs. */}
-          {pair.status === 'completed' && (
+          {/* Retry button — only meaningful for terminal-failure states. A
+              successful pair has nothing to retry; a running pair already is.
+              The worker resets per-run counters on pickup and uses imapsync
+              incremental, so already-copied messages won't double-copy. */}
+          {canRetry && (
+            <div className="space-y-2">
+              <button
+                onClick={doRetry}
+                disabled={retryBusy}
+                className="w-full bg-primary-container hover:bg-primary-dark text-white rounded-xl py-3 flex items-center justify-center font-bold text-sm shadow-sm cursor-pointer transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <RefreshCw className={cn('h-4 w-4 mr-2', retryBusy && 'animate-spin')} />
+                {retryBusy ? 'Queueing…' : 'Retry this pair'}
+              </button>
+              {retryMsg && (
+                <p
+                  className={cn(
+                    'text-[12px] font-bold text-center',
+                    retryMsg.kind === 'success' ? 'text-emerald-700' : 'text-red-700',
+                  )}
+                >
+                  {retryMsg.text}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Initial Migration Log — captured by the bulk worker into
+              bulk_pair_log (sync_run_id IS NULL). Shown for any pair that
+              has started (running / terminal) so the user can debug what
+              imapsync did line-by-line. */}
+          {pair.status !== 'pending' && pair.status !== 'queued' && (
+            <InitialMigrationLogPanel bulkId={bulkId} pairId={pair.id} />
+          )}
+
+          {/* Per-pair sync history. Available once the pair's initial copy
+              has succeeded (clean OR with errors — sync ticks still meaningful). */}
+          {(pair.status === 'completed' || pair.status === 'completed_with_errors') && (
             <SyncHistoryPanel
               scope={{ type: 'bulkPair', bulkId, pairId: pair.id }}
               liveRunId={live?.runId ?? null}
@@ -747,6 +889,88 @@ function PairDetailsModal({
         >
           OK
         </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Lazy-loaded panel rendering imapsync's stdout/stderr captured during the
+ * INITIAL bulk migration run for one pair. Reuses the same visual idiom as
+ * the sync-run log panel but doesn't paginate per-run (initial migration is
+ * one continuous run from worker's POV). Auto-polls every 4s while the
+ * pair is still running.
+ */
+function InitialMigrationLogPanel({ bulkId, pairId }: { bulkId: string; pairId: number }) {
+  const [logs, setLogs] = useState<SyncLogRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [open, setOpen] = useState(false);
+
+  const fetchLogs = async () => {
+    try {
+      const rows = await api.getBulkPairInitialLogs(bulkId, pairId);
+      setLogs(rows);
+      setError(null);
+    } catch (e: any) {
+      setError(e?.message ?? 'Failed to load logs');
+    }
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    void fetchLogs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  return (
+    <div className="space-y-2">
+      <h3 className="text-primary-dark font-extrabold text-base">Initial Migration Log</h3>
+      <div className="border border-slate-200/80 rounded-xl bg-white shadow-sm overflow-hidden">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="w-full px-5 py-3 flex items-center justify-between hover:bg-slate-50/60 text-left transition-colors"
+        >
+          <span className="text-sm font-bold text-primary-dark">
+            {open ? 'Hide log lines' : 'Show log lines'}
+          </span>
+          <ChevronDown
+            className={cn('h-4 w-4 text-slate-400 transition-transform', open && 'rotate-180')}
+          />
+        </button>
+        {open && (
+          <div className="bg-slate-50/60 px-5 py-4 border-t border-slate-100">
+            {error ? (
+              <p className="text-red-600 text-xs font-medium">Failed to load logs: {error}</p>
+            ) : logs === null ? (
+              <div className="flex items-center gap-2 text-slate-500 text-xs font-medium">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Loading logs…
+              </div>
+            ) : logs.length === 0 ? (
+              <p className="text-slate-400 text-xs italic font-medium">
+                No log lines captured for this pair&apos;s initial run.
+              </p>
+            ) : (
+              <div className="max-h-72 overflow-y-auto font-mono text-[11px] leading-relaxed text-slate-700 space-y-0.5">
+                {logs.map((l) => (
+                  <div
+                    key={l.id}
+                    className={cn(
+                      'flex gap-2',
+                      l.level === 'error' && 'text-red-600',
+                      l.level === 'warn' && 'text-amber-600',
+                    )}
+                  >
+                    <span className="text-slate-400 shrink-0">
+                      {new Date(l.ts).toLocaleTimeString()}
+                    </span>
+                    <span className="break-all whitespace-pre-wrap">{l.message}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -140,6 +140,14 @@ export const api = {
   /** Logs for one bulk pair sync run. */
   getBulkPairSyncRunLogs: (bulkId: string, pairId: number, runId: string) =>
     request<SyncLogRow[]>(`/api/bulk-migrations/${bulkId}/pairs/${pairId}/sync-runs/${runId}/logs`),
+  /** Initial bulk migration logs for one pair (sync_run_id IS NULL). */
+  getBulkPairInitialLogs: (bulkId: string, pairId: number) =>
+    request<SyncLogRow[]>(`/api/bulk-migrations/${bulkId}/pairs/${pairId}/logs`),
+  /** Retry one failed pair — enqueues a single-pair bulk-migration job. */
+  retryBulkPair: (bulkId: string, pairId: number) =>
+    request<{ ok: boolean }>(`/api/bulk-migrations/${bulkId}/pairs/${pairId}/retry`, {
+      method: 'POST',
+    }),
 
   getSettings: () => request<any>('/api/settings'),
   saveSettings: (payload: any) =>
