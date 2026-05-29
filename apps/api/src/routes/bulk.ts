@@ -200,7 +200,43 @@ export async function bulkRoutes(app: FastifyInstance) {
     const [b] = await db.select().from(bulkMigration).where(eq(bulkMigration.id, id)).limit(1);
     if (!b) return reply.code(404).send({ error: 'Not found' });
     const pairs = await db.select().from(bulkPair).where(eq(bulkPair.bulkId, id));
-    return { ...b, pairs };
+
+    // Derive sync health from the last `THRESHOLD` sync runs per pair. A
+    // pair counts as "failing" when its most recent N sync runs are ALL
+    // status='failed' — that pattern means the issue is persistent
+    // (server unreachable / auth broken / etc), not a transient blip.
+    //
+    // We pull the most recent few hundred runs across the whole bulk and
+    // bucket them per pair in JS rather than running N queries; cheap and
+    // bounded since sync_run is retention-pruned with the migration.
+    const THRESHOLD = 3;
+    const recentRuns = await db
+      .select({
+        pairId: syncRun.bulkPairId,
+        status: syncRun.status,
+        startedAt: syncRun.startedAt,
+        errorMessage: syncRun.errorMessage,
+      })
+      .from(syncRun)
+      .where(eq(syncRun.bulkId, id))
+      .orderBy(desc(syncRun.startedAt))
+      .limit(500);
+    const byPair = new Map<number, typeof recentRuns>();
+    for (const r of recentRuns) {
+      if (r.pairId == null) continue;
+      const arr = byPair.get(r.pairId) ?? [];
+      if (arr.length < THRESHOLD) arr.push(r);
+      byPair.set(r.pairId, arr);
+    }
+    const failingPairs: { pairId: number; lastError: string | null }[] = [];
+    for (const [pairId, runs] of byPair) {
+      if (runs.length >= THRESHOLD && runs.every((r) => r.status === 'failed')) {
+        failingPairs.push({ pairId, lastError: runs[0]?.errorMessage ?? null });
+      }
+    }
+    const syncHealth: 'healthy' | 'degraded' = failingPairs.length > 0 ? 'degraded' : 'healthy';
+
+    return { ...b, pairs, syncHealth, failingSyncPairs: failingPairs };
   });
 
   // -------- Initial migration logs (per-pair) -----------------------------

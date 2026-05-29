@@ -67,6 +67,10 @@ type BulkData = {
   settings: Record<string, any> | null;
   createdAt?: string;
   pairs: Pair[];
+  /** API-computed: 'degraded' when ≥1 pair has 3+ consecutive failed
+   *  sync runs. Surfaces as an amber banner. Auto-clears on next success. */
+  syncHealth?: 'healthy' | 'degraded';
+  failingSyncPairs?: { pairId: number; lastError: string | null }[];
 };
 
 const LIVE_STATUSES = ['queued', 'scanning', 'running', 'paused'] as const;
@@ -286,6 +290,24 @@ export function YourBulkMigration() {
       </div>
 
       <StatusBanner data={data} onView={() => navigate(`/bulk/${id}/progress`)} />
+
+      {/* Recent sync failures banner — distinct from the bulk's own status.
+          The bulk itself may have finished cleanly months ago; this banner
+          flags an ongoing Auto Sync / Backup tick problem that the user
+          should investigate. Auto-clears as soon as any pair gets a
+          successful sync run. */}
+      {data.syncHealth === 'degraded' &&
+        data.failingSyncPairs &&
+        data.failingSyncPairs.length > 0 && (
+          <SyncFailuresBanner
+            failingPairs={data.failingSyncPairs}
+            pairs={data.pairs}
+            onClickPair={(pairId) => {
+              const p = data.pairs.find((x) => x.id === pairId);
+              if (p) setDetailsFor(p);
+            }}
+          />
+        )}
 
       {/* Initial Migration card */}
       <div className="space-y-4">
@@ -508,6 +530,63 @@ function StatBadge({ value, label }: { value: string | number; label: string }) 
       </div>
       <div className="text-[15px] text-primary">
         <span className="font-bold">{value}</span> {label}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Banner shown above the initial-migration card when one or more pairs
+ * have ≥3 consecutive failed sync runs. Visible only when the API
+ * returned `syncHealth='degraded'`; click a pair link to open its
+ * details modal where the user can inspect Sync History.
+ */
+function SyncFailuresBanner({
+  failingPairs,
+  pairs,
+  onClickPair,
+}: {
+  failingPairs: { pairId: number; lastError: string | null }[];
+  pairs: Pair[];
+  onClickPair: (pairId: number) => void;
+}) {
+  const pairById = new Map(pairs.map((p) => [p.id, p]));
+  return (
+    <div className="rounded-xl border p-4 md:p-5 flex items-start gap-3 bg-amber-50 border-amber-200">
+      <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-amber-500" />
+      <div className="flex-1 min-w-0">
+        <p className="font-bold text-sm text-amber-800">
+          Recent sync failures — {failingPairs.length} mailbox
+          {failingPairs.length === 1 ? '' : 'es'} need attention
+        </p>
+        <p className="text-xs md:text-sm mt-0.5 text-amber-800 opacity-80 mb-3">
+          The pair{failingPairs.length === 1 ? ' has' : 's have'} failed 3 or more sync runs in a
+          row. The initial migration is unaffected. Open Details → Sync History to inspect the error
+          and decide whether to Retry or disable sync.
+        </p>
+        <ul className="space-y-1">
+          {failingPairs.slice(0, 5).map((fp) => {
+            const p = pairById.get(fp.pairId);
+            return (
+              <li key={fp.pairId} className="flex items-center gap-2 text-xs">
+                <button
+                  onClick={() => onClickPair(fp.pairId)}
+                  className="font-bold text-amber-900 hover:underline truncate max-w-xs"
+                >
+                  {p?.sourceUsername ?? `pair #${fp.pairId}`}
+                </button>
+                {fp.lastError && (
+                  <span className="text-amber-700/70 truncate">— {fp.lastError}</span>
+                )}
+              </li>
+            );
+          })}
+          {failingPairs.length > 5 && (
+            <li className="text-xs text-amber-700/70 italic">
+              …and {failingPairs.length - 5} more
+            </li>
+          )}
+        </ul>
       </div>
     </div>
   );
