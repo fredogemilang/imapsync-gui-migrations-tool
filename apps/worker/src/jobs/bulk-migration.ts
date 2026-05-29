@@ -439,10 +439,7 @@ export async function handleBulkMigration(job: Job<{ bulkId: string; pairIds?: n
       else bulkStatus = 'cancelled';
     }
     if (bulkStatus) {
-      await db
-        .update(bulkMigration)
-        .set({ status: bulkStatus })
-        .where(eq(bulkMigration.id, id));
+      await db.update(bulkMigration).set({ status: bulkStatus }).where(eq(bulkMigration.id, id));
       publish(id, { kind: 'status', status: bulkStatus });
     }
     publish(id, {
