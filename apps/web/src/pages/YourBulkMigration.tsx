@@ -67,10 +67,11 @@ type BulkData = {
   settings: Record<string, any> | null;
   createdAt?: string;
   pairs: Pair[];
-  /** API-computed: 'degraded' when ≥1 pair has 3+ consecutive failed
-   *  sync runs. Surfaces as an amber banner. Auto-clears on next success. */
+  /** API-computed health. 'degraded' when ≥1 pair is currently failing
+   *  per the trigger-aware thresholds: any single manual Sync Now failure,
+   *  OR 3 consecutive auto/backup failures. Auto-clears on next success. */
   syncHealth?: 'healthy' | 'degraded';
-  failingSyncPairs?: { pairId: number; lastError: string | null }[];
+  failingSyncPairs?: { pairId: number; lastError: string | null; trigger: string }[];
 };
 
 const LIVE_STATUSES = ['queued', 'scanning', 'running', 'paused'] as const;
@@ -537,20 +538,38 @@ function StatBadge({ value, label }: { value: string | number; label: string }) 
 
 /**
  * Banner shown above the initial-migration card when one or more pairs
- * have ≥3 consecutive failed sync runs. Visible only when the API
- * returned `syncHealth='degraded'`; click a pair link to open its
- * details modal where the user can inspect Sync History.
+ * are currently failing per the trigger-aware threshold rules:
+ *   - manual (Sync Now)        → threshold 1 (any single failure)
+ *   - scheduled (auto/backup)  → threshold 3 (consecutive)
+ *
+ * Auto-clears as soon as a successful sync run lands. Click a pair link
+ * to open its PairDetailsModal where the user can inspect Sync History.
  */
 function SyncFailuresBanner({
   failingPairs,
   pairs,
   onClickPair,
 }: {
-  failingPairs: { pairId: number; lastError: string | null }[];
+  failingPairs: { pairId: number; lastError: string | null; trigger: string }[];
   pairs: Pair[];
   onClickPair: (pairId: number) => void;
 }) {
   const pairById = new Map(pairs.map((p) => [p.id, p]));
+  // Bucket by trigger so the subtitle explains WHY each pair is flagged.
+  const manualFails = failingPairs.filter((f) => f.trigger === 'manual');
+  const scheduledFails = failingPairs.filter((f) => f.trigger !== 'manual');
+  const summaryParts: string[] = [];
+  if (manualFails.length > 0) {
+    summaryParts.push(
+      `${manualFails.length} pair${manualFails.length === 1 ? '' : 's'} failed on the latest Sync Now`,
+    );
+  }
+  if (scheduledFails.length > 0) {
+    summaryParts.push(
+      `${scheduledFails.length} pair${scheduledFails.length === 1 ? '' : 's'} failed 3+ consecutive scheduled syncs`,
+    );
+  }
+
   return (
     <div className="rounded-xl border p-4 md:p-5 flex items-start gap-3 bg-amber-50 border-amber-200">
       <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5 text-amber-500" />
@@ -560,13 +579,13 @@ function SyncFailuresBanner({
           {failingPairs.length === 1 ? '' : 'es'} need attention
         </p>
         <p className="text-xs md:text-sm mt-0.5 text-amber-800 opacity-80 mb-3">
-          The pair{failingPairs.length === 1 ? ' has' : 's have'} failed 3 or more sync runs in a
-          row. The initial migration is unaffected. Open Details → Sync History to inspect the error
-          and decide whether to Retry or disable sync.
+          {summaryParts.join(' · ')}. The initial migration is unaffected. Open Details → Sync
+          History to inspect the error and decide whether to Retry or disable sync.
         </p>
         <ul className="space-y-1">
           {failingPairs.slice(0, 5).map((fp) => {
             const p = pairById.get(fp.pairId);
+            const triggerLabel = fp.trigger === 'manual' ? 'Sync Now' : 'scheduled';
             return (
               <li key={fp.pairId} className="flex items-center gap-2 text-xs">
                 <button
@@ -575,6 +594,7 @@ function SyncFailuresBanner({
                 >
                   {p?.sourceUsername ?? `pair #${fp.pairId}`}
                 </button>
+                <span className="text-amber-700/70 italic">({triggerLabel})</span>
                 {fp.lastError && (
                   <span className="text-amber-700/70 truncate">— {fp.lastError}</span>
                 )}

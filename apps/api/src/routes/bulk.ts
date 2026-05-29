@@ -201,21 +201,28 @@ export async function bulkRoutes(app: FastifyInstance) {
     if (!b) return reply.code(404).send({ error: 'Not found' });
     const pairs = await db.select().from(bulkPair).where(eq(bulkPair.bulkId, id));
 
-    // Derive sync health from the last `THRESHOLD` sync runs per pair. A
-    // pair counts as "failing" when its most recent N sync runs are ALL
-    // status='failed' — that pattern means the issue is persistent
-    // (server unreachable / auth broken / etc), not a transient blip.
+    // Derive sync health per-pair with TRIGGER-AWARE thresholds:
     //
-    // We pull the most recent few hundred runs across the whole bulk and
-    // bucket them per pair in JS rather than running N queries; cheap and
-    // bounded since sync_run is retention-pruned with the migration.
-    const THRESHOLD = 3;
+    //   - Manual (Sync Now)      → threshold 1 (immediate)
+    //       Sync Now is a one-shot batch — any failure should surface
+    //       right away, and a success here should immediately clear any
+    //       prior degraded state.
+    //   - Scheduled (auto/backup) → threshold 3 (consecutive)
+    //       Repeating ticks can have transient blips (DNS, source
+    //       maintenance, brief network issues) — require persistence
+    //       before alarming.
+    //
+    // The LATEST run's trigger drives the decision per pair. Older runs
+    // are only consulted to verify the threshold-3 chain for scheduled
+    // triggers. Currently-running runs are skipped (state pending).
+    const THRESHOLD_SCHEDULED = 3;
     const recentRuns = await db
       .select({
         pairId: syncRun.bulkPairId,
         status: syncRun.status,
         startedAt: syncRun.startedAt,
         errorMessage: syncRun.errorMessage,
+        trigger: syncRun.trigger,
       })
       .from(syncRun)
       .where(eq(syncRun.bulkId, id))
@@ -225,13 +232,44 @@ export async function bulkRoutes(app: FastifyInstance) {
     for (const r of recentRuns) {
       if (r.pairId == null) continue;
       const arr = byPair.get(r.pairId) ?? [];
-      if (arr.length < THRESHOLD) arr.push(r);
+      // Keep up to THRESHOLD_SCHEDULED rows per pair — enough for either rule.
+      if (arr.length < THRESHOLD_SCHEDULED) arr.push(r);
       byPair.set(r.pairId, arr);
     }
-    const failingPairs: { pairId: number; lastError: string | null }[] = [];
+    const failingPairs: {
+      pairId: number;
+      lastError: string | null;
+      trigger: string;
+    }[] = [];
     for (const [pairId, runs] of byPair) {
-      if (runs.length >= THRESHOLD && runs.every((r) => r.status === 'failed')) {
-        failingPairs.push({ pairId, lastError: runs[0]?.errorMessage ?? null });
+      if (runs.length === 0) continue;
+      const latest = runs[0]!;
+      // Skip in-flight runs — their state resolves on next event.
+      if (latest.status === 'running') continue;
+      if (latest.trigger === 'manual') {
+        // Threshold 1: latest manual run is authoritative. A success here
+        // clears the pair regardless of older scheduled failures.
+        if (latest.status === 'failed') {
+          failingPairs.push({
+            pairId,
+            lastError: latest.errorMessage,
+            trigger: 'manual',
+          });
+        }
+      } else {
+        // Threshold 3: only flag when the latest 3 scheduled runs all
+        // failed (a more recent manual success would have short-circuited
+        // above, so we don't need to re-check that here).
+        if (
+          runs.length >= THRESHOLD_SCHEDULED &&
+          runs.every((r) => r.status === 'failed' && r.trigger !== 'manual')
+        ) {
+          failingPairs.push({
+            pairId,
+            lastError: latest.errorMessage,
+            trigger: latest.trigger,
+          });
+        }
       }
     }
     const syncHealth: 'healthy' | 'degraded' = failingPairs.length > 0 ? 'degraded' : 'healthy';
