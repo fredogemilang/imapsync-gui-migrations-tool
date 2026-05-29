@@ -189,15 +189,30 @@ export async function handleBulkMigration(job: Job<{ bulkId: string; pairIds?: n
       cancelledCount++;
       return;
     }
+    // For retries on partially-completed pairs we PRESERVE the prior
+    // migrated/bytes counters and ACCUMULATE this run's new copies on
+    // top — imapsync skips already-on-target messages so a retry's
+    // `copied` only counts the new + previously-failed ones, and adding
+    // them to the prior total gives the true "messages on target" count.
+    //
+    // failedEmails / foldersSynced / totalFolders DO reset — they
+    // describe the LATEST run's state (e.g. if 1 of 26 previously-failed
+    // messages succeeded, failed should drop to 25, not stay at 26).
+    const [prior] = await db
+      .select({
+        migrated: bulkPair.migratedEmails,
+        bytes: bulkPair.migratedBytes,
+      })
+      .from(bulkPair)
+      .where(eq(bulkPair.id, pair.id))
+      .limit(1);
+    const priorMigrated = prior?.migrated ?? 0;
+    const priorBytes = prior?.bytes ?? 0;
+
     await db
       .update(bulkPair)
       .set({
         status: 'running',
-        // Reset per-run counters so a retry starts clean (imapsync itself
-        // is incremental on the wire, but our UI metrics shouldn't carry
-        // over partial numbers from a prior failed attempt).
-        migratedEmails: 0,
-        migratedBytes: 0,
         failedEmails: 0,
         foldersSynced: 0,
         totalFolders: 0,
@@ -216,7 +231,9 @@ export async function handleBulkMigration(job: Job<{ bulkId: string; pairIds?: n
       rejectDone = rej;
     });
 
-    // Per-pair running tallies, aggregated from imapsync event stream.
+    // Per-pair running tallies. Counted-from-zero for this run; the prior
+    // totals are added in when we persist so the column always reflects
+    // "total messages/bytes ever on target".
     let pairCopied = 0;
     let pairBytes = 0;
     let pairFailed = 0;
@@ -267,12 +284,13 @@ export async function handleBulkMigration(job: Job<{ bulkId: string; pairIds?: n
             pairFailed += ev.failed ?? 0;
             foldersSeen.add(ev.name);
             // Snapshot the running totals so the modal can update without
-            // waiting for run completion.
+            // waiting for run completion. migrated_emails/bytes are the
+            // PRIOR-run total + what we've copied so far this run.
             void db
               .update(bulkPair)
               .set({
-                migratedEmails: pairCopied,
-                migratedBytes: pairBytes,
+                migratedEmails: priorMigrated + pairCopied,
+                migratedBytes: priorBytes + pairBytes,
                 failedEmails: pairFailed,
                 foldersSynced: foldersSeen.size,
                 totalFolders: pairTotalFolders,
@@ -315,9 +333,11 @@ export async function handleBulkMigration(job: Job<{ bulkId: string; pairIds?: n
               exitCode,
               error: errorMsg,
               // Final flush of running tallies so the persisted row is the
-              // source of truth for the modal stats.
-              migratedEmails: pairCopied,
-              migratedBytes: pairBytes,
+              // source of truth for the modal stats. migrated_emails/bytes
+              // = previous run's total + this run's new copies (see
+              // priorMigrated/priorBytes load above).
+              migratedEmails: priorMigrated + pairCopied,
+              migratedBytes: priorBytes + pairBytes,
               failedEmails: pairFailed,
               foldersSynced: foldersSeen.size,
               totalFolders: pairTotalFolders,
