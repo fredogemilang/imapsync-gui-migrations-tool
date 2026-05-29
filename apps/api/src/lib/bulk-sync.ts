@@ -173,3 +173,24 @@ export async function hasRunningManualSession(bulkId: string): Promise<boolean> 
     .limit(1);
   return !!row;
 }
+
+/** The currently-running sync session of ANY type (manual / auto / backup),
+ *  if any. Used by the Sync Now guard and the UI button state — a manual
+ *  batch shouldn't overlap with a scheduled tick either, because both would
+ *  hammer the same per-pair imapsync state files. */
+export async function getActiveSession(
+  bulkId: string,
+): Promise<{ id: string; type: 'manual' | 'auto' | 'backup' } | null> {
+  const rows = await db
+    .select({ id: bulkSyncSession.id, type: bulkSyncSession.type })
+    .from(bulkSyncSession)
+    .where(and(eq(bulkSyncSession.bulkId, bulkId), eq(bulkSyncSession.status, 'running')))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  if (row.type === 'manual' || row.type === 'auto' || row.type === 'backup') {
+    return { id: row.id, type: row.type };
+  }
+  // Unknown legacy types fall through as if no session
+  return null;
+}

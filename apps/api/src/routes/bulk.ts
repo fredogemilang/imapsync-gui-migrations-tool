@@ -7,11 +7,7 @@ import { encrypt } from '../lib/crypto.js';
 import { bulkPairSyncJobId, bulkPairSyncQueue, bulkQueue } from '../lib/queue.js';
 import { redis } from '../lib/redis.js';
 import { subscribeSSE } from '../lib/sse-bus.js';
-import {
-  enqueueBulkSyncNow,
-  hasRunningManualSession,
-  reconcileBulkPairSyncs,
-} from '../lib/bulk-sync.js';
+import { enqueueBulkSyncNow, getActiveSession, reconcileBulkPairSyncs } from '../lib/bulk-sync.js';
 
 const BULK_TERMINAL = ['completed', 'completed_with_errors', 'failed', 'cancelled'] as const;
 
@@ -99,7 +95,21 @@ export async function bulkRoutes(app: FastifyInstance) {
       const patch = SettingsPatch.parse(req.body);
       const [b] = await db.select().from(bulkMigration).where(eq(bulkMigration.id, id)).limit(1);
       if (!b) return reply.code(404).send({ error: 'Not found' });
-      const merged = { ...(b.settings as object), ...patch };
+      const merged: Record<string, unknown> = { ...(b.settings as object), ...patch };
+      // Mutual exclusion: Auto Sync and Backup Mode can't both be on.
+      //   - Same request asks for both → 400 (caller's bug, surface it loudly).
+      //   - Patch turns one ON while the other was already ON → auto-flip the
+      //     other off (friendlier than refusing; the UI does this implicitly
+      //     but a partial PATCH from elsewhere shouldn't end up in conflict).
+      if (patch.autoSync === true && patch.backupMode === true) {
+        return reply.code(400).send({ error: 'Auto Sync and Backup Mode cannot both be enabled.' });
+      }
+      if (patch.autoSync === true && merged.backupMode === true) {
+        merged.backupMode = false;
+      }
+      if (patch.backupMode === true && merged.autoSync === true) {
+        merged.autoSync = false;
+      }
       await db
         .update(bulkMigration)
         .set({ settings: merged as any })
@@ -126,12 +136,23 @@ export async function bulkRoutes(app: FastifyInstance) {
       const id = (req.params as any).id as string;
       const [b] = await db.select().from(bulkMigration).where(eq(bulkMigration.id, id)).limit(1);
       if (!b) return reply.code(404).send({ error: 'Not found' });
-      // Guard against double-fire. The UI also disables the button when
-      // session.status='running', but a stale tab could still POST so we
-      // enforce server-side too.
-      if (await hasRunningManualSession(id)) {
+      // Guard: refuse if ANY sync session is currently running for this
+      // bulk — manual batch, auto tick, or backup tick. Overlap would have
+      // multiple imapsync processes contending for the same per-pair
+      // state files (.pid, .pw1, .pw2), corrupting them. The UI also
+      // disables the button when activeSession is non-null but a stale
+      // tab could still POST so we enforce server-side.
+      const active = await getActiveSession(id);
+      if (active) {
+        const label =
+          active.type === 'manual'
+            ? 'A Sync Now session is already running'
+            : active.type === 'auto'
+              ? 'An Auto Sync tick is currently running'
+              : 'A Backup Mode tick is currently running';
         return reply.code(409).send({
-          error: 'A Sync Now session is already running for this bulk. Wait for it to finish.',
+          error: `${label}. Wait for it to finish before starting a new Sync Now.`,
+          activeSession: active,
         });
       }
       const { sessionId, count } = await enqueueBulkSyncNow(id);
@@ -294,26 +315,21 @@ export async function bulkRoutes(app: FastifyInstance) {
     }
     const syncHealth: 'healthy' | 'degraded' = failingPairs.length > 0 ? 'degraded' : 'healthy';
 
-    // Active manual session (if any) — drives the Sync Now button's
-    // disabled state in the UI.
-    const [activeManual] = await db
-      .select({ id: bulkSyncSession.id })
-      .from(bulkSyncSession)
-      .where(
-        and(
-          eq(bulkSyncSession.bulkId, id),
-          eq(bulkSyncSession.type, 'manual'),
-          eq(bulkSyncSession.status, 'running'),
-        ),
-      )
-      .limit(1);
+    // Active sync session of ANY type — drives the Sync Now button's
+    // disabled state. The button is disabled regardless of whether the
+    // active session is manual, auto, or backup; the label adapts to
+    // explain WHY.
+    const activeSession = await getActiveSession(id);
 
     return {
       ...b,
       pairs,
       syncHealth,
       failingSyncPairs: failingPairs,
-      activeManualSessionId: activeManual?.id ?? null,
+      activeSession,
+      // Back-compat alias retained for any older client; new code should
+      // read `activeSession` instead.
+      activeManualSessionId: activeSession?.type === 'manual' ? activeSession.id : null,
     };
   });
 

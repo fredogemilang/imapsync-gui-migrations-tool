@@ -72,8 +72,11 @@ type BulkData = {
    *  OR 3 consecutive auto/backup failures. Auto-clears on next success. */
   syncHealth?: 'healthy' | 'degraded';
   failingSyncPairs?: { pairId: number; lastError: string | null; trigger: string }[];
-  /** Active manual sync session id (if any). Sync Now button is disabled
-   *  while non-null; click it again to navigate to the in-flight session. */
+  /** Currently-running session of ANY type (manual / auto / backup).
+   *  Sync Now button is disabled while non-null; label adapts to the
+   *  blocking session's type. */
+  activeSession?: { id: string; type: 'manual' | 'auto' | 'backup' } | null;
+  /** Back-compat alias kept for older clients. */
   activeManualSessionId?: string | null;
 };
 
@@ -119,6 +122,20 @@ export function YourBulkMigration() {
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLive]);
+
+  // Once the bulk itself is past its initial migration the live-status
+  // poll above stops. But the bulk row's `activeSession` field can still
+  // change underneath us when a scheduled Auto Sync / Backup tick starts
+  // or finishes — so we keep a slower poll (every 10s) so the Sync Now
+  // button's disabled state stays accurate. Also keeps polling while a
+  // session is in flight to catch the transition to idle.
+  const hasActiveSession = !!data?.activeSession;
+  useEffect(() => {
+    if (isLive) return; // already polling at 4s
+    const t = setInterval(refresh, hasActiveSession ? 5000 : 10000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLive, hasActiveSession]);
 
   // -------------------------------------------------------------------
   // Sync History — live SSE feed, keyed by pairId.
@@ -459,7 +476,7 @@ export function YourBulkMigration() {
       <BulkSettingsCard
         bulkId={id!}
         settings={settings}
-        activeManualSessionId={data.activeManualSessionId}
+        activeSession={data.activeSession ?? null}
         onChange={(merged) => setData((d) => (d ? { ...d, settings: merged } : d))}
       />
 
@@ -1258,14 +1275,15 @@ function SessionStatusInline({ status }: { status: string }) {
 function BulkSettingsCard({
   bulkId,
   settings,
-  activeManualSessionId,
+  activeSession,
   onChange,
 }: {
   bulkId: string;
   settings: Record<string, any>;
-  /** When set, a Sync Now batch is currently in flight. Button is disabled
-   *  with tooltip + visible link to the live progress page. */
-  activeManualSessionId?: string | null;
+  /** When non-null, a sync session of some type is in flight — Sync Now
+   *  button is disabled and a "View live progress →" link points at it.
+   *  Label adapts to the session type so the user knows what's blocking. */
+  activeSession?: { id: string; type: 'manual' | 'auto' | 'backup' } | null;
   onChange: (merged: Record<string, any>) => void;
 }) {
   const navigate = useNavigate();
@@ -1502,21 +1520,34 @@ function BulkSettingsCard({
             </div>
           )}
 
-          {/* Sync Now CTA. Disabled while there's an in-flight manual
-              session (prevents double-fire); shows a separate "View
-              progress" link so the user can jump to the running batch. */}
-          {activeManualSessionId ? (
+          {/* Sync Now CTA.
+              - Active session of ANY type (manual / auto / backup) →
+                button disabled with type-aware label + "View live
+                progress" link. Avoids overlap that would corrupt the
+                per-pair imapsync state files (.pid, .pw1, .pw2).
+              - Idle (no running session) → standard primary button. */}
+          {activeSession ? (
             <div className="space-y-2">
               <button
                 disabled
-                title="A Sync Now batch is already running for this bulk."
+                title={
+                  activeSession.type === 'manual'
+                    ? 'A Sync Now batch is already running for this bulk.'
+                    : activeSession.type === 'auto'
+                      ? 'An Auto Sync tick is currently running. Wait for it to finish before triggering Sync Now.'
+                      : 'A Backup Mode tick is currently running. Wait for it to finish before triggering Sync Now.'
+                }
                 className="w-full bg-slate-300 text-white rounded-xl py-3.5 flex items-center justify-center font-bold text-[15px] cursor-not-allowed"
               >
                 <RefreshCw className="h-5 w-5 mr-2 animate-spin" strokeWidth={2.5} />
-                Sync Now is running…
+                {activeSession.type === 'manual'
+                  ? 'Sync Now is running…'
+                  : activeSession.type === 'auto'
+                    ? 'Auto Sync tick running…'
+                    : 'Backup Mode tick running…'}
               </button>
               <button
-                onClick={() => navigate(`/bulk/${bulkId}/sync/${activeManualSessionId}/progress`)}
+                onClick={() => navigate(`/bulk/${bulkId}/sync/${activeSession.id}/progress`)}
                 className="w-full bg-white border border-primary/30 text-primary hover:bg-primary/5 rounded-xl py-2.5 flex items-center justify-center font-bold text-sm transition-colors"
               >
                 View live progress →
