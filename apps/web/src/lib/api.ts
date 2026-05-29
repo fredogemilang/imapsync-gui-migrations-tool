@@ -145,6 +145,11 @@ export const api = {
     request<BulkSyncSession & { runs: BulkSyncSessionRun[] }>(
       `/api/bulk-migrations/${id}/sync-sessions/${sessionId}`,
     ),
+  stopBulkSyncSession: (id: string, sessionId: string) =>
+    request<{ ok: boolean; drained: number }>(
+      `/api/bulk-migrations/${id}/sync-sessions/${sessionId}/stop`,
+      { method: 'POST' },
+    ),
   /** List sync runs for one bulk pair (latest 50, newest first). */
   listBulkPairSyncRuns: (bulkId: string, pairId: number) =>
     request<SyncRun[]>(`/api/bulk-migrations/${bulkId}/pairs/${pairId}/sync-runs`),

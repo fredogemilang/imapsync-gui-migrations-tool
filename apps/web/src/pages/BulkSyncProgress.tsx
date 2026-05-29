@@ -8,10 +8,12 @@ import {
   Layers,
   Loader2,
   RefreshCw,
+  StopCircle,
   XCircle,
 } from 'lucide-react';
 import { api, type BulkSyncSession, type BulkSyncSessionRun } from '@/lib/api';
 import { cn, formatBytes } from '@/lib/utils';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import {
   HeaderBackLink,
   useFooter,
@@ -46,6 +48,9 @@ export function BulkSyncProgress() {
   const navigate = useNavigate();
   const [session, setSession] = useState<SessionData | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [stopConfirmOpen, setStopConfirmOpen] = useState(false);
+  const [stopBusy, setStopBusy] = useState(false);
+  const [stopError, setStopError] = useState<string | null>(null);
 
   useHeaderLeft(<HeaderBackLink to={`/bulk/${id}`} label="Back to Bulk" />);
   useSidebarTitle('Sync Progress');
@@ -75,6 +80,23 @@ export function BulkSyncProgress() {
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLive]);
+
+  const onConfirmStop = async () => {
+    if (!id || !sessionId) return;
+    setStopBusy(true);
+    setStopError(null);
+    try {
+      await api.stopBulkSyncSession(id, sessionId);
+      setStopConfirmOpen(false);
+      // Refresh immediately so the user sees status flip to 'cancelled'
+      // and the per-pair table re-renders with cancellation badges.
+      await refresh();
+    } catch (e: any) {
+      setStopError(e?.message ?? 'Failed to stop session');
+    } finally {
+      setStopBusy(false);
+    }
+  };
 
   useFooter(
     <button
@@ -155,7 +177,19 @@ export function BulkSyncProgress() {
                 )}
               </p>
             </div>
-            <SessionStatusBadge status={session.status} />
+            <div className="flex items-center gap-3">
+              <SessionStatusBadge status={session.status} />
+              {isLive && (
+                <button
+                  onClick={() => setStopConfirmOpen(true)}
+                  disabled={stopBusy}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <StopCircle className="h-3.5 w-3.5" />
+                  {stopBusy ? 'Stopping…' : 'Stop'}
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Aggregate progress bar */}
@@ -232,6 +266,33 @@ export function BulkSyncProgress() {
           </div>
         </div>
       </div>
+
+      {/* Stop confirm dialog */}
+      <ConfirmDialog
+        open={stopConfirmOpen}
+        title="Stop this sync session?"
+        description={
+          <>
+            This will SIGTERM imapsync for every pair currently running and drop any pairs still
+            queued. <strong>Pairs that have already finished keep their result</strong> — your data
+            on the target is unaffected. The session will be marked <em>cancelled</em>.
+          </>
+        }
+        variant="danger"
+        confirmLabel="Stop session"
+        cancelLabel="Keep running"
+        busy={stopBusy}
+        onCancel={() => setStopConfirmOpen(false)}
+        onConfirm={onConfirmStop}
+      />
+      <ConfirmDialog
+        open={stopError !== null}
+        title="Could not stop session"
+        description={stopError ?? ''}
+        variant="danger"
+        cancelLabel="OK"
+        onCancel={() => setStopError(null)}
+      />
     </div>
   );
 }
@@ -378,6 +439,8 @@ function RunStatusBadge({ status }: { status: string }) {
         return { label: 'Success', dot: 'bg-emerald-500', text: 'text-emerald-600', pulse: false };
       case 'failed':
         return { label: 'Failed', dot: 'bg-red-500', text: 'text-red-600', pulse: false };
+      case 'cancelled':
+        return { label: 'Cancelled', dot: 'bg-slate-400', text: 'text-slate-500', pulse: false };
       case 'running':
         return { label: 'Running', dot: 'bg-blue-500', text: 'text-blue-500', pulse: true };
       default:

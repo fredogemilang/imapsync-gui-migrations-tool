@@ -234,6 +234,20 @@ export async function handleBulkPairSync(
   // session was created by the API at Sync Now time; for auto/backup we
   // lazily group within a 30-minute tick window.
   const sessionId = await resolveSession(bulkId, trigger, job.data.sessionId ?? null);
+
+  // Short-circuit: if the session has already been cancelled (e.g. API
+  // POSTed /stop while this job was still queued), don't spend cycles
+  // opening a sync_run row + spawning imapsync. Just return.
+  if (sessionId) {
+    const [s] = await db
+      .select({ status: bulkSyncSession.status })
+      .from(bulkSyncSession)
+      .where(eq(bulkSyncSession.id, sessionId))
+      .limit(1);
+    if (s && s.status !== 'running') {
+      return { skipped: `session-${s.status}` };
+    }
+  }
   const [run] = await db
     .insert(syncRun)
     .values({ bulkId, bulkPairId: pairId, sessionId, trigger, status: 'running' })
@@ -265,6 +279,40 @@ export async function handleBulkPairSync(
   // Per-run running totals, aggregated from imapsync folder-stats events.
   let runEmails = 0;
   let runBytes = 0;
+
+  // Cancellation wiring: subscribe to `bulk-sync-cancel:<sessionId>` so
+  // the API's POST /sync-sessions/:sessionId/stop can SIGTERM this pair's
+  // running imapsync child mid-flight. We hold a dedicated subscriber
+  // connection per job — Redis SUBSCRIBE mode can't share with the
+  // publisher. Channel is no-op when there's no session (legacy/unknown).
+  let cancelledByUser = false;
+  const cancelChannel = sessionId ? `bulk-sync-cancel:${sessionId}` : null;
+  const cancelSub = cancelChannel
+    ? new Redis({ host: env.REDIS_HOST, port: env.REDIS_PORT, maxRetriesPerRequest: null })
+    : null;
+  if (cancelSub && cancelChannel) {
+    await cancelSub.subscribe(cancelChannel);
+    cancelSub.on('message', (chan) => {
+      if (chan !== cancelChannel) return;
+      cancelledByUser = true;
+      const ch = childRef.c;
+      if (ch) {
+        try {
+          ch.kill('SIGTERM');
+        } catch {
+          // already exited
+        }
+        // Hard kill fallback after 10s in case imapsync ignores SIGTERM.
+        setTimeout(() => {
+          try {
+            ch.kill('SIGKILL');
+          } catch {
+            // already exited
+          }
+        }, 10_000).unref();
+      }
+    });
+  }
 
   try {
     const handle = await runImapsync(
@@ -349,6 +397,44 @@ export async function handleBulkPairSync(
     await tickSessionDone(sessionId, true);
     return { ok: true };
   } catch (e: any) {
+    // Distinguish "user cancelled" from real failures: the former is
+    // surfaced as status='cancelled' + a friendlier message, no bell
+    // notification, no rethrow (BullMQ would otherwise retry).
+    if (cancelledByUser) {
+      const cancelMsg = 'Cancelled by user';
+      await db
+        .update(syncRun)
+        .set({
+          status: 'cancelled',
+          finishedAt: new Date(),
+          errorMessage: cancelMsg,
+          migratedEmails: runEmails,
+          migratedBytes: runBytes,
+        })
+        .where(eq(syncRun.id, runId));
+      void db.insert(bulkPairLog).values({
+        bulkPairId: pairId,
+        syncRunId: runId,
+        level: 'warn',
+        message: 'Sync cancelled by user',
+      });
+      publish({ kind: 'sync-run-finished', runId, sessionId, ok: false, error: 'cancelled' });
+      publish({
+        kind: 'sync-status',
+        running: false,
+        ok: false,
+        error: 'cancelled',
+        manual,
+        runId,
+        sessionId,
+      });
+      // For session counters, cancelled counts as "done but not ok" same
+      // as failed — the API has already marked the session 'cancelled',
+      // so tickSessionDone's mark-finished branch won't fire.
+      await tickSessionDone(sessionId, false).catch(() => {});
+      return { cancelled: true };
+    }
+
     const errorMessage = e?.message ?? 'imapsync error';
     await db
       .update(syncRun)
@@ -387,5 +473,11 @@ export async function handleBulkPairSync(
     throw e;
   } finally {
     if (cleanupRef.fn) await cleanupRef.fn();
+    // Tear down the cancel subscriber connection so we don't leak Redis
+    // sockets when many pairs sync in parallel.
+    if (cancelSub) {
+      await cancelSub.unsubscribe().catch(() => {});
+      await cancelSub.quit().catch(() => {});
+    }
   }
 }

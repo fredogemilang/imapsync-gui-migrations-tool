@@ -455,6 +455,59 @@ export async function bulkRoutes(app: FastifyInstance) {
     },
   );
 
+  // Stop a running sync session. Marks the session 'cancelled' in DB,
+  // drains any still-queued bulk-pair-sync jobs that belong to it, and
+  // publishes a cancel signal on Redis so already-running workers can
+  // SIGTERM their imapsync child. Completed pairs in the session keep
+  // their existing terminal status — only pairs still running or queued
+  // are affected.
+  app.post(
+    '/api/bulk-migrations/:id/sync-sessions/:sessionId/stop',
+    { preHandler: [app.requireAuth] },
+    async (req, reply) => {
+      const { id, sessionId } = req.params as any;
+      const [session] = await db
+        .select()
+        .from(bulkSyncSession)
+        .where(and(eq(bulkSyncSession.id, sessionId), eq(bulkSyncSession.bulkId, id)))
+        .limit(1);
+      if (!session) return reply.code(404).send({ error: 'Session not found' });
+      if (session.status !== 'running') {
+        return reply.code(409).send({ error: `Session is already ${session.status}, cannot stop` });
+      }
+
+      // 1. Flip the row to 'cancelled' BEFORE draining queued jobs so any
+      //    worker that picks one up next sees the cancelled state and
+      //    short-circuits in handleBulkPairSync's early-skip check.
+      await db
+        .update(bulkSyncSession)
+        .set({ status: 'cancelled', finishedAt: new Date() })
+        .where(eq(bulkSyncSession.id, sessionId));
+
+      // 2. Drain still-queued bulk-pair-sync jobs that carry this
+      //    sessionId in their job data. BullMQ doesn't index by job data
+      //    so we list and filter — fine since the pending set is small
+      //    (≤ total pairs in this session).
+      let drained = 0;
+      const pending = await bulkPairSyncQueue.getJobs(['waiting', 'delayed', 'paused']);
+      await Promise.all(
+        pending.map(async (j) => {
+          if ((j.data as any)?.sessionId === sessionId) {
+            await j.remove().catch(() => {});
+            drained++;
+          }
+        }),
+      );
+
+      // 3. Publish the cancel signal — every running pair-sync worker
+      //    subscribed to bulk-sync-cancel:<sessionId> will SIGTERM its
+      //    imapsync child and mark its sync_run row as 'cancelled'.
+      await redis.publish(`bulk-sync-cancel:${sessionId}`, '1');
+
+      return { ok: true, drained };
+    },
+  );
+
   // Detail for one session — session row + every sync_run row that
   // belongs to it (with pair source/target usernames joined in). The
   // progress page at /bulk/:id/sync/:sessionId/progress uses this for
