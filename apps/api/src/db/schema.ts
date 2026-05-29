@@ -121,10 +121,24 @@ export const bulkPair = pgTable('bulk_pair', {
    *  after each pair's migration completes is future work. */
   syncEnabled: boolean('sync_enabled').notNull().default(false),
   backupEnabled: boolean('backup_enabled').notNull().default(false),
+  /** pending | running | completed | failed | cancelled | completed_with_errors */
   status: text('status').notNull().default('pending'),
   progressPercent: integer('progress_percent').notNull().default(0),
   migratedEmails: integer('migrated_emails').notNull().default(0),
   totalEmails: integer('total_emails').notNull().default(0),
+  /** Bytes actually copied to target, aggregated from imapsync folder-stats. */
+  migratedBytes: bigint('migrated_bytes', { mode: 'number' }).notNull().default(0),
+  /** Messages imapsync classified as failed during the run (per-message). */
+  failedEmails: integer('failed_emails').notNull().default(0),
+  /** Folder counts. The bulk worker parses imapsync's "Folders synced: X/Y synced"
+   *  end-of-run line; folder-stats events also bump foldersSynced as they arrive. */
+  totalFolders: integer('total_folders').notNull().default(0),
+  foldersSynced: integer('folders_synced').notNull().default(0),
+  /** imapsync process exit code. 0 = clean. 115 = EXIT_ERR_FETCH (some
+   *  source messages unfetchable). Used by the UI to render the friendly
+   *  metric block alongside the raw error text. NULL when the worker hasn't
+   *  finalised yet (in-flight / cancelled mid-run). */
+  exitCode: integer('exit_code'),
   error: text('error'),
 });
 
@@ -178,20 +192,21 @@ export const migrationLog = pgTable('migration_log', {
 /**
  * Per-bulk-pair log stream. The single-migration log stream lives on
  * `migration_log`; bulk pairs don't materialise into the migration table
- * so they get their own table here. Currently only written by the
- * bulk-pair-sync worker; the initial bulk-migration job does not yet emit
- * structured logs per pair (future enhancement). syncRunId is NOT NULL
- * because today every row belongs to a sync run — relax if/when initial
- * bulk pair logs land.
+ * so they get their own table here.
+ *
+ * Written by BOTH the initial bulk-migration worker AND the bulk-pair-sync
+ * worker. To distinguish:
+ *   - syncRunId IS NULL  → initial migration log line
+ *   - syncRunId IS set   → log line from that sync run
+ *
+ * Querying logs for one pair's initial run: WHERE bulk_pair_id = $1 AND sync_run_id IS NULL.
  */
 export const bulkPairLog = pgTable('bulk_pair_log', {
   id: serial('id').primaryKey(),
   bulkPairId: integer('bulk_pair_id')
     .notNull()
     .references(() => bulkPair.id, { onDelete: 'cascade' }),
-  syncRunId: uuid('sync_run_id')
-    .notNull()
-    .references(() => syncRun.id, { onDelete: 'cascade' }),
+  syncRunId: uuid('sync_run_id').references(() => syncRun.id, { onDelete: 'cascade' }),
   ts: timestamp('ts', { withTimezone: true }).defaultNow().notNull(),
   level: text('level').notNull().default('info'),
   message: text('message').notNull(),

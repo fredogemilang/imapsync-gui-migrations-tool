@@ -91,6 +91,11 @@ export const bulkPair = pgTable('bulk_pair', {
   progressPercent: integer('progress_percent').notNull(),
   migratedEmails: integer('migrated_emails').notNull(),
   totalEmails: integer('total_emails').notNull(),
+  migratedBytes: bigint('migrated_bytes', { mode: 'number' }).notNull().default(0),
+  failedEmails: integer('failed_emails').notNull().default(0),
+  totalFolders: integer('total_folders').notNull().default(0),
+  foldersSynced: integer('folders_synced').notNull().default(0),
+  exitCode: integer('exit_code'),
   error: text('error'),
 });
 
@@ -124,12 +129,12 @@ export const migrationLog = pgTable('migration_log', {
   syncRunId: uuid('sync_run_id'),
 });
 
-// Per-bulk-pair log stream — only populated by the bulk-pair-sync worker
-// today; the initial bulk migration job does not yet emit per-pair logs.
+// Per-bulk-pair log stream. syncRunId NULL → initial migration log line;
+// syncRunId set → log line for that sync run.
 export const bulkPairLog = pgTable('bulk_pair_log', {
   id: serial('id').primaryKey(),
   bulkPairId: integer('bulk_pair_id').notNull(),
-  syncRunId: uuid('sync_run_id').notNull(),
+  syncRunId: uuid('sync_run_id'),
   ts: timestamp('ts', { withTimezone: true }).defaultNow().notNull(),
   level: text('level').notNull(),
   message: text('message').notNull(),

@@ -47,8 +47,10 @@ docker compose exec api pnpm run db:push
 
 Re-run whenever you pull changes that add columns / tables. Recent additions:
 
+- `bulk_pair.migrated_bytes`, `failed_emails`, `total_folders`, `folders_synced`, `exit_code` (stats surfaced in PairDetailsModal)
+- `bulk_pair_log.sync_run_id` is now NULLABLE (NULL = initial-migration log line, NOT-NULL = sync-run log line)
 - `sync_run` table (per-sync-run history — `Sync History` panel in YourMigration / per-pair modal in YourBulkMigration)
-- `bulk_pair_log` table (per-pair sync log lines)
+- `bulk_pair_log` table (per-pair logs — initial + sync runs)
 - `migration_log.sync_run_id` (groups logs by sync run)
 - `notification` table (in-app bell)
 - `migration.migrated_bytes`

@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/index.js';
 import { bulkMigration, bulkPair, bulkPairLog, syncRun } from '../db/schema.js';
 import { encrypt } from '../lib/crypto.js';
@@ -202,6 +202,71 @@ export async function bulkRoutes(app: FastifyInstance) {
     const pairs = await db.select().from(bulkPair).where(eq(bulkPair.bulkId, id));
     return { ...b, pairs };
   });
+
+  // -------- Initial migration logs (per-pair) -----------------------------
+  // Logs captured during the INITIAL bulk-migration imapsync run for one
+  // pair. Sync-run logs live on the same `bulk_pair_log` table but have
+  // `sync_run_id` set — filter to `IS NULL` to get just the initial run.
+  // Capped at 500 lines (initial runs can be chatty but the UI shows them
+  // in a scrollable panel; older lines stay queryable in DB).
+  app.get(
+    '/api/bulk-migrations/:id/pairs/:pairId/logs',
+    { preHandler: [app.requireAuth] },
+    async (req) => {
+      const { pairId } = req.params as any;
+      const rows = await db
+        .select()
+        .from(bulkPairLog)
+        .where(and(eq(bulkPairLog.bulkPairId, Number(pairId)), isNull(bulkPairLog.syncRunId)))
+        .orderBy(desc(bulkPairLog.ts))
+        .limit(500);
+      return rows;
+    },
+  );
+
+  // -------- Retry a single failed pair ------------------------------------
+  // Re-enqueues the pair through the same bulk-migration worker code path.
+  // The worker's runOne() resets all per-run counters first and uses
+  // imapsync incremental — already-copied messages get skipped, only the
+  // remaining (or previously unfetchable) ones are attempted. Refuses to
+  // retry pairs that aren't in a terminal state.
+  app.post(
+    '/api/bulk-migrations/:id/pairs/:pairId/retry',
+    { preHandler: [app.requireAuth] },
+    async (req, reply) => {
+      const { id, pairId } = req.params as any;
+      const pidNum = Number(pairId);
+      const [pair] = await db
+        .select()
+        .from(bulkPair)
+        .where(and(eq(bulkPair.id, pidNum), eq(bulkPair.bulkId, id)))
+        .limit(1);
+      if (!pair) return reply.code(404).send({ error: 'Pair not found' });
+      const retryable = ['failed', 'completed_with_errors', 'cancelled'];
+      if (!retryable.includes(pair.status)) {
+        return reply.code(409).send({ error: `Cannot retry pair in status '${pair.status}'` });
+      }
+      // Mark pending so the UI flips immediately; the worker will set
+      // 'running' once it picks up the job.
+      await db
+        .update(bulkPair)
+        .set({
+          status: 'pending',
+          error: null,
+          progressPercent: 0,
+        })
+        .where(eq(bulkPair.id, pidNum));
+      // Enqueue a one-pair retry. The bulk-migration worker accepts
+      // `pairIds` in the job data — when set, it only runs those pairs
+      // instead of every pair in the bulk. See handleBulkMigration.
+      await bulkQueue.add(
+        'bulk-retry',
+        { bulkId: id, pairIds: [pidNum] },
+        { removeOnComplete: 20, removeOnFail: 50 },
+      );
+      return { ok: true };
+    },
+  );
 
   // -------- Sync history (per-pair) ---------------------------------------
   // List of past sync runs for one pair, newest first. Capped at 50 — same

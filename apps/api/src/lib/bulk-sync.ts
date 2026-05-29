@@ -77,7 +77,7 @@ export async function reconcileBulkPairSyncs(bulkId: string): Promise<{
 
   for (const p of pairs) {
     const key = bulkPairSyncJobId(p.id);
-    if (schedule && p.status === 'completed') {
+    if (schedule && (p.status === 'completed' || p.status === 'completed_with_errors')) {
       await bulkPairSyncQueue
         .upsertJobScheduler(
           key,
@@ -115,7 +115,12 @@ export async function enqueueBulkSyncNow(bulkId: string): Promise<number> {
   const pairs = await db
     .select({ id: bulkPair.id })
     .from(bulkPair)
-    .where(and(eq(bulkPair.bulkId, bulkId), inArray(bulkPair.status, ['completed'])));
+    .where(
+      and(
+        eq(bulkPair.bulkId, bulkId),
+        inArray(bulkPair.status, ['completed', 'completed_with_errors']),
+      ),
+    );
   await Promise.all(
     pairs.map((p) =>
       bulkPairSyncQueue.add(

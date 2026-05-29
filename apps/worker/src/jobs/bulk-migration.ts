@@ -3,7 +3,7 @@ import type { Job } from 'bullmq';
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
 import type { ChildProcess } from 'node:child_process';
-import { db, bulkMigration, bulkPair } from '../db.js';
+import { db, bulkMigration, bulkPair, bulkPairLog } from '../db.js';
 import { decrypt } from '../crypto.js';
 import { runImapsync, type Security } from '../imapsync.js';
 import { resolveEmailHeaderSetting } from '../app-settings.js';
@@ -49,10 +49,18 @@ async function applyPostBulkSync(bulkId: string): Promise<void> {
   const endsAt = backupMode ? null : new Date(Date.now() + AUTO_SYNC_DURATION);
   const mode = backupMode ? 'backup' : 'auto';
 
+  // Schedule for both 'completed' AND 'completed_with_errors' — a pair
+  // that hit 26 unfetchable source messages out of 55k is still a valid
+  // target for ongoing sync (most of its data made it across).
   const completedPairs = await db
     .select({ id: bulkPair.id })
     .from(bulkPair)
-    .where(and(eq(bulkPair.bulkId, bulkId), eq(bulkPair.status, 'completed')));
+    .where(
+      and(
+        eq(bulkPair.bulkId, bulkId),
+        inArray(bulkPair.status, ['completed', 'completed_with_errors']),
+      ),
+    );
 
   await Promise.all(
     completedPairs.map((p) =>
@@ -87,14 +95,41 @@ function asSecurity(s: string): Security {
   throw new Error(`Invalid security value in DB: ${JSON.stringify(s)}`);
 }
 
-export async function handleBulkMigration(job: Job<{ bulkId: string }>) {
+export async function handleBulkMigration(job: Job<{ bulkId: string; pairIds?: number[] }>) {
   const id = job.data.bulkId;
+  // When `pairIds` is present, run only those specific pairs — used by the
+  // "Retry failed pair" API endpoint to re-attempt one or a handful of
+  // pairs without re-touching the rest of the bulk. Absent = full bulk
+  // (the original first-deploy code path).
+  const retryPairIds = Array.isArray(job.data.pairIds) ? job.data.pairIds : null;
+  const isRetry = retryPairIds !== null;
   const [b] = await db.select().from(bulkMigration).where(eq(bulkMigration.id, id));
   if (!b) throw new Error(`Bulk migration ${id} not found`);
 
-  const pairs = await db.select().from(bulkPair).where(eq(bulkPair.bulkId, id));
-  await db.update(bulkMigration).set({ status: 'running' }).where(eq(bulkMigration.id, id));
-  publish(id, { kind: 'status', status: 'running' });
+  const pairs = isRetry
+    ? await db
+        .select()
+        .from(bulkPair)
+        .where(and(eq(bulkPair.bulkId, id), inArray(bulkPair.id, retryPairIds!)))
+    : await db.select().from(bulkPair).where(eq(bulkPair.bulkId, id));
+
+  if (pairs.length === 0) {
+    if (isRetry) {
+      // Nothing to do — pair was deleted between enqueue and pickup.
+      return;
+    }
+    throw new Error(`Bulk ${id} has no pairs`);
+  }
+
+  // Don't flip the bulk's headline status on a per-pair retry — the bulk
+  // itself stays in its terminal state (completed_with_errors / failed).
+  // Only the pair's row transitions.
+  if (!isRetry) {
+    await db.update(bulkMigration).set({ status: 'running' }).where(eq(bulkMigration.id, id));
+    publish(id, { kind: 'status', status: 'running' });
+  } else {
+    publish(id, { kind: 'retry-started', pairIds: retryPairIds });
+  }
 
   // Cancellation wiring — mirror of single-migration: subscribe to a
   // bulk-cancel channel and SIGTERM every currently-running pair's child.
@@ -154,7 +189,23 @@ export async function handleBulkMigration(job: Job<{ bulkId: string }>) {
       cancelledCount++;
       return;
     }
-    await db.update(bulkPair).set({ status: 'running' }).where(eq(bulkPair.id, pair.id));
+    await db
+      .update(bulkPair)
+      .set({
+        status: 'running',
+        // Reset per-run counters so a retry starts clean (imapsync itself
+        // is incremental on the wire, but our UI metrics shouldn't carry
+        // over partial numbers from a prior failed attempt).
+        migratedEmails: 0,
+        migratedBytes: 0,
+        failedEmails: 0,
+        foldersSynced: 0,
+        totalFolders: 0,
+        exitCode: null,
+        error: null,
+        progressPercent: 0,
+      })
+      .where(eq(bulkPair.id, pair.id));
     const cleanupRef: { fn: (() => Promise<void>) | null } = { fn: null };
     const childRef: { c: ChildProcess | null } = { c: null };
 
@@ -164,6 +215,13 @@ export async function handleBulkMigration(job: Job<{ bulkId: string }>) {
       resolveDone = res;
       rejectDone = rej;
     });
+
+    // Per-pair running tallies, aggregated from imapsync event stream.
+    let pairCopied = 0;
+    let pairBytes = 0;
+    let pairFailed = 0;
+    let pairTotalFolders = 0;
+    const foldersSeen = new Set<string>(); // each folder-stats event marks a folder synced
 
     try {
       const handle = await runImapsync(
@@ -191,35 +249,89 @@ export async function handleBulkMigration(job: Job<{ bulkId: string }>) {
         },
         (ev) => {
           publish(id, { pairId: pair.id, ...ev });
-          if (ev.kind === 'percent') {
+          if (ev.kind === 'log') {
+            // Persist log line so the UI can render the Initial Migration
+            // Log panel after the run. syncRunId is left NULL — this is
+            // an initial-migration line, not a sync run.
+            void db
+              .insert(bulkPairLog)
+              .values({ bulkPairId: pair.id, level: ev.level, message: ev.message })
+              .catch(() => {});
+          } else if (ev.kind === 'folder') {
+            // imapsync reports total folder count on every folder event.
+            // Latch the highest value we see.
+            if (ev.total > pairTotalFolders) pairTotalFolders = ev.total;
+          } else if (ev.kind === 'folder-stats') {
+            pairCopied += ev.copied ?? 0;
+            pairBytes += ev.bytes ?? 0;
+            pairFailed += ev.failed ?? 0;
+            foldersSeen.add(ev.name);
+            // Snapshot the running totals so the modal can update without
+            // waiting for run completion.
+            void db
+              .update(bulkPair)
+              .set({
+                migratedEmails: pairCopied,
+                migratedBytes: pairBytes,
+                failedEmails: pairFailed,
+                foldersSynced: foldersSeen.size,
+                totalFolders: pairTotalFolders,
+              })
+              .where(eq(bulkPair.id, pair.id))
+              .catch(() => {});
+          } else if (ev.kind === 'percent') {
             void db
               .update(bulkPair)
               .set({ progressPercent: ev.percent })
               .where(eq(bulkPair.id, pair.id));
           } else if (ev.kind === 'done') {
-            if (ev.ok) {
-              void db
-                .update(bulkPair)
-                .set({ status: 'completed', progressPercent: 100 })
-                .where(eq(bulkPair.id, pair.id))
-                .then(() => resolveDone())
-                .catch((err) => rejectDone(err as Error));
-            } else if (cancelled || ev.error === 'cancelled') {
-              void db
-                .update(bulkPair)
-                .set({ status: 'cancelled' })
-                .where(eq(bulkPair.id, pair.id))
-                .then(() => {
-                  resolveDone();
-                })
-                .catch((err) => rejectDone(err as Error));
+            const exitCode = ev.exitCode ?? null;
+            // Decide the row's terminal status:
+            //   ok=true           → completed
+            //   cancelled flag    → cancelled
+            //   ok=false + we got at least one copied msg/folder
+            //                     → completed_with_errors (partial success)
+            //   otherwise         → failed
+            // Rationale: imapsync can exit 115 (EXIT_ERR_FETCH) when ALL it
+            // failed were a handful of unfetchable source messages — the
+            // bulk of the mailbox actually migrated. Surfacing that as a
+            // flat "failed" hides 99.9% of the work the worker did.
+            let nextStatus: 'completed' | 'completed_with_errors' | 'failed' | 'cancelled';
+            if (cancelled || ev.error === 'cancelled') {
+              nextStatus = 'cancelled';
+            } else if (ev.ok) {
+              nextStatus = 'completed';
+            } else if (pairCopied > 0 || foldersSeen.size > 0) {
+              nextStatus = 'completed_with_errors';
             } else {
-              void db
-                .update(bulkPair)
-                .set({ status: 'failed', error: ev.error ?? 'failed' })
-                .where(eq(bulkPair.id, pair.id))
-                .finally(() => rejectDone(new Error(ev.error ?? 'failed')));
+              nextStatus = 'failed';
             }
+            const errorMsg =
+              nextStatus === 'completed' || nextStatus === 'cancelled'
+                ? null
+                : (ev.error ?? 'failed');
+            const baseUpdate = {
+              status: nextStatus,
+              exitCode,
+              error: errorMsg,
+              // Final flush of running tallies so the persisted row is the
+              // source of truth for the modal stats.
+              migratedEmails: pairCopied,
+              migratedBytes: pairBytes,
+              failedEmails: pairFailed,
+              foldersSynced: foldersSeen.size,
+              totalFolders: pairTotalFolders,
+              ...(nextStatus === 'completed' ? { progressPercent: 100 } : {}),
+            };
+            void db
+              .update(bulkPair)
+              .set(baseUpdate)
+              .where(eq(bulkPair.id, pair.id))
+              .then(() => {
+                if (nextStatus === 'failed') rejectDone(new Error(ev.error ?? 'failed'));
+                else resolveDone();
+              })
+              .catch((err) => rejectDone(err as Error));
           }
         },
       );
@@ -228,7 +340,8 @@ export async function handleBulkMigration(job: Job<{ bulkId: string }>) {
       liveChildren.add(handle.child);
       handle.child.on('error', (e) => rejectDone(e));
       await done;
-      // success or cancellation both count as "ran" — distinguish below
+      // A completed_with_errors run still counts as "succeeded" for the
+      // bulk-level aggregate: the user's data made it to the target.
       if (cancelled) cancelledCount++;
       else succeededCount++;
     } catch (e: any) {
@@ -277,6 +390,19 @@ export async function handleBulkMigration(job: Job<{ bulkId: string }>) {
   } finally {
     cancelSub.off('message', onCancelMsg);
     await cancelSub.unsubscribe(cancelChannel).catch(() => {});
+  }
+
+  // For per-pair retries, leave the bulk-level status alone — the bulk
+  // already finished long ago, and the retry job is just refreshing one
+  // pair's row. Emit a status event so the UI can refetch the bulk + pairs.
+  if (isRetry) {
+    publish(id, {
+      kind: 'retry-finished',
+      pairIds: retryPairIds,
+      succeeded: succeededCount,
+      failed: failedCount,
+    });
+    return;
   }
 
   let finalStatus: 'completed' | 'completed_with_errors' | 'failed' | 'cancelled';

@@ -47,7 +47,11 @@ export type ProgressEvent =
       failed: number;
       bytes: number;
     }
-  | { kind: 'done'; ok: boolean; error?: string };
+  /** Final event. `exitCode` is imapsync's process exit code when the
+   *  child terminated normally (0 = clean, 115 = EXIT_ERR_FETCH, etc).
+   *  NULL for SIGTERM/SIGKILL cancellation paths. Persisted on bulk_pair
+   *  + migration rows so the UI can render the metric block. */
+  | { kind: 'done'; ok: boolean; error?: string; exitCode?: number | null };
 
 // Narrowed to the literal union so any drift (lowercase, mistyped) is a
 // compile-time error. The previous `sec: string` allowed silent fall-through
@@ -459,12 +463,17 @@ export async function runImapsync(
     // normally trigger this never arrives for the last folder in a run.
     if (currentFolder) flushFolderStats(currentFolder);
     if (signal === 'SIGTERM' || signal === 'SIGKILL') {
-      onEvent({ kind: 'done', ok: false, error: 'cancelled' });
+      onEvent({ kind: 'done', ok: false, error: 'cancelled', exitCode: null });
     } else if (code === 0) {
       onEvent({ kind: 'percent', percent: 100 });
-      onEvent({ kind: 'done', ok: true });
+      onEvent({ kind: 'done', ok: true, exitCode: 0 });
     } else {
-      onEvent({ kind: 'done', ok: false, error: `imapsync exited with code ${code}` });
+      onEvent({
+        kind: 'done',
+        ok: false,
+        error: `imapsync exited with code ${code}`,
+        exitCode: code ?? null,
+      });
     }
   });
 

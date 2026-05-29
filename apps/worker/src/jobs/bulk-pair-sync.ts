@@ -79,7 +79,9 @@ export async function handleBulkPairSync(
   }
 
   // Don't try to sync a pair whose initial run never completed.
-  if (pair.status !== 'completed' && !manual) {
+  // 'completed_with_errors' is OK: most of its mailbox copied; the
+  // sync tick can pick up new messages just like a clean 'completed' pair.
+  if (pair.status !== 'completed' && pair.status !== 'completed_with_errors' && !manual) {
     return { skipped: `pair-status-${pair.status}` };
   }
 
