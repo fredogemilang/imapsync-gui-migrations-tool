@@ -1,4 +1,4 @@
-import { and, eq, lt, sql } from 'drizzle-orm';
+import { and, eq, inArray, lt, sql } from 'drizzle-orm';
 import { Queue, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { env } from './env.js';
@@ -171,6 +171,58 @@ void db
     }
   })
   .catch((e) => console.error('[worker] bulk_sync_session sweep failed:', e));
+
+// Stale `migration.status='running'` boot sweep (initial migration).
+//
+// When a worker container is SIGKILLed mid-initial-migration (Dokploy
+// deploy, OOM, hardware), `handleSingleMigration`'s finally block never
+// runs to flip the row to a terminal status. The migration sits at
+// 'running' forever, the UI shows "Migration in progress" with no
+// actual worker doing the work, and the user has no recovery path
+// short of manual SQL.
+//
+// On boot we re-enqueue every `running` migration with `resume: true`.
+// imapsync is incremental — already-copied messages are skipped on
+// the next pass — so the user keeps their progress and the migration
+// resumes where the killed worker left off.
+//
+// Defensive 60s window: in multi-replica deploys (replicas=2 in prod)
+// another live worker may have JUST flipped a row to 'running' a moment
+// before this sweep fires; don't yank its job out from under it.
+//
+// `scanning`/`paused` are intentionally NOT swept — those reflect
+// user-driven states that should persist across restart (paused = user
+// hit Stop; scanning is a brief transient state owned by the worker).
+const migrationQueueForSweep = new Queue('migration', { connection });
+void db
+  .select({ id: migration.id })
+  .from(migration)
+  .where(
+    and(
+      inArray(migration.status, ['running']),
+      lt(migration.startedAt, sql`NOW() - INTERVAL '60 seconds'`),
+    ),
+  )
+  .then(async (rows) => {
+    if (rows.length === 0) return;
+    for (const row of rows) {
+      try {
+        const job = await migrationQueueForSweep.add(
+          'single',
+          { migrationId: row.id, resume: true },
+          { removeOnComplete: 50, removeOnFail: 100 },
+        );
+        await db
+          .update(migration)
+          .set({ jobId: job.id ?? null, status: 'queued' })
+          .where(eq(migration.id, row.id));
+      } catch (e) {
+        console.error(`[worker] failed to resume orphan migration ${row.id}:`, e);
+      }
+    }
+    console.log(`[worker] auto-resumed ${rows.length} orphan migration(s)`);
+  })
+  .catch((e) => console.error('[worker] migration sweep failed:', e));
 
 console.log(`[worker] started (concurrency=${env.WORKER_CONCURRENCY})`);
 
