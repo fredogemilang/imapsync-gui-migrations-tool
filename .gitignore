@@ -26,3 +26,8 @@ mockup/
 # Per-developer Claude Code / IDE config
 .claude/
 
+# Local runbooks / notes that belong to other projects this user happens
+# to keep alongside the repo. Not part of this project.
+SSO-LLDAP-RUNBOOK.md
+samples/
+
