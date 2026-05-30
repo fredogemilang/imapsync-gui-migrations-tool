@@ -1,8 +1,8 @@
-import { eq } from 'drizzle-orm';
+import { and, eq, lt, sql } from 'drizzle-orm';
 import { Queue, Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 import { env } from './env.js';
-import { db, migration } from './db.js';
+import { db, migration, syncRun } from './db.js';
 import { handleSingleMigration } from './jobs/single-migration.js';
 import { handleBulkMigration } from './jobs/bulk-migration.js';
 import { handleSyncJob } from './jobs/sync.js';
@@ -104,6 +104,73 @@ void db
     }
   })
   .catch((e) => console.error('[worker] syncRunning sweep failed:', e));
+
+// Stale `sync_run.status='running'` boot sweep.
+//
+// Each handleSyncJob / handleBulkPairSync inserts a sync_run row at start
+// and flips it to success/failed in finally. But a SIGKILL / OOM /
+// container restart mid-run skips the flip and the row sticks at
+// 'running' forever — UI shows "Running" with elapsed time growing
+// indefinitely. Since the worker is the only writer, no row can
+// genuinely be running across a worker restart, so it's safe to flip
+// every stale row to 'failed' on boot.
+//
+// We exclude rows newer than 60 seconds defensively: in single-replica
+// dev, the worker process is also the one that just rebooted, but in
+// production with replicas=2 another worker may have JUST inserted a
+// legitimately-running row a moment before this sweep fires.
+void db
+  .update(syncRun)
+  .set({
+    status: 'failed',
+    finishedAt: new Date(),
+    errorMessage: 'Orphaned — worker restarted while this sync was running',
+  })
+  .where(
+    and(eq(syncRun.status, 'running'), lt(syncRun.startedAt, sql`NOW() - INTERVAL '60 seconds'`)),
+  )
+  .then((res) => {
+    const n = (res as unknown as { rowCount?: number }).rowCount;
+    if (typeof n === 'number' && n > 0) {
+      console.log(`[worker] swept ${n} orphaned sync_run row(s)`);
+    }
+  })
+  .catch((e) => console.error('[worker] sync_run sweep failed:', e));
+
+// Stale `bulk_sync_session.status='running'` boot sweep.
+//
+// Sessions only flip out of 'running' when all their per-pair sync_runs
+// finish (via tickSessionDone). If pair workers crashed mid-session and
+// left sync_runs orphaned, the session ALSO stays at 'running' forever.
+// After the sync_run sweep above marks orphans as 'failed', any session
+// older than 1h whose pair rows are all terminal can be safely
+// finalised: if at least one succeeded → 'finished', otherwise 'failed'.
+void db
+  .execute(
+    sql`
+      UPDATE bulk_sync_session ss
+      SET status = CASE
+            WHEN (SELECT COUNT(*) FROM sync_run sr
+                  WHERE sr.session_id = ss.id AND sr.status = 'success') > 0
+            THEN 'finished'
+            ELSE 'failed'
+          END,
+          finished_at = NOW()
+      WHERE ss.status = 'running'
+        AND ss.started_at < NOW() - INTERVAL '1 hour'
+        AND NOT EXISTS (
+          SELECT 1 FROM sync_run sr
+          WHERE sr.session_id = ss.id AND sr.status = 'running'
+        )
+    `,
+  )
+  .then((res) => {
+    const n = (res as unknown as { rowCount?: number }).rowCount;
+    if (typeof n === 'number' && n > 0) {
+      console.log(`[worker] finalised ${n} stale bulk_sync_session(s)`);
+    }
+  })
+  .catch((e) => console.error('[worker] bulk_sync_session sweep failed:', e));
 
 console.log(`[worker] started (concurrency=${env.WORKER_CONCURRENCY})`);
 
