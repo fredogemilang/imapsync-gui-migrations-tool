@@ -374,6 +374,27 @@ export async function migrationRoutes(app: FastifyInstance) {
     },
   );
 
+  // Stop an in-flight sync run for a single migration. Mirrors the bulk
+  // pair stop: publishes a cancel signal on `migration-sync-cancel:<id>`
+  // that the worker subscribes to. The worker SIGTERMs the imapsync
+  // child and marks the sync_run row as 'cancelled'. No-op (200 with
+  // ok: false) when nothing is running so the UI doesn't have to
+  // pre-check before sending.
+  app.post(
+    '/api/migrations/:id/sync/stop',
+    { preHandler: [app.requireAuth] },
+    async (req, reply) => {
+      const id = (req.params as any).id as string;
+      const [m] = await db.select().from(migration).where(eq(migration.id, id)).limit(1);
+      if (!m) return reply.code(404).send({ error: 'Not found' });
+      if (!m.syncRunning) {
+        return { ok: false, reason: 'no-sync-running' };
+      }
+      await redis.publish(`migration-sync-cancel:${id}`, '1');
+      return { ok: true };
+    },
+  );
+
   app.post(
     '/api/migrations/:id/sync/now',
     { preHandler: [app.requireAuth] },

@@ -132,6 +132,40 @@ export async function handleSyncJob(job: Job<{ migrationId: string; manual?: boo
 
   const cleanupRef: { fn: (() => Promise<void>) | null } = { fn: null };
   const childRef: { c: ChildProcess | null } = { c: null };
+
+  // Cancellation wiring — mirror of bulk-pair-sync. POST /sync/stop on
+  // the API publishes a one-byte message on `migration-sync-cancel:<id>`
+  // and we SIGTERM the running imapsync child here. Mark cancelledByUser
+  // so the catch block can distinguish a user-initiated cancel (→ status
+  // 'cancelled', no bell, no BullMQ retry) from a real failure.
+  let cancelledByUser = false;
+  const cancelChannel = `migration-sync-cancel:${id}`;
+  const cancelSub = new Redis({
+    host: env.REDIS_HOST,
+    port: env.REDIS_PORT,
+    maxRetriesPerRequest: null,
+  });
+  await cancelSub.subscribe(cancelChannel);
+  cancelSub.on('message', (chan) => {
+    if (chan !== cancelChannel) return;
+    cancelledByUser = true;
+    const ch = childRef.c;
+    if (ch) {
+      try {
+        ch.kill('SIGTERM');
+      } catch {
+        // already exited
+      }
+      // Hard kill fallback after 10s if imapsync ignores SIGTERM.
+      setTimeout(() => {
+        try {
+          ch.kill('SIGKILL');
+        } catch {
+          // already exited
+        }
+      }, 10_000).unref();
+    }
+  });
   // Per-run running totals. Aggregated from imapsync's `folder-stats` events
   // so the UI can show "synced N emails / M MB" once the run is done.
   let runEmails = 0;
@@ -228,6 +262,41 @@ export async function handleSyncJob(job: Job<{ migrationId: string; manual?: boo
     });
     publish({ kind: 'sync-status', running: false, ok: true, manual, runId });
   } catch (e: any) {
+    // Distinguish user-initiated cancel from a real failure: the former
+    // is marked 'cancelled', skips the bell notification, and does NOT
+    // rethrow (so BullMQ doesn't retry on next backoff tick).
+    if (cancelledByUser) {
+      const cancelMsg = 'Cancelled by user';
+      const finishedAt = new Date();
+      await db.update(migration).set({ syncRunning: false }).where(eq(migration.id, id));
+      await db
+        .update(syncRun)
+        .set({
+          status: 'cancelled',
+          finishedAt,
+          errorMessage: cancelMsg,
+          migratedEmails: runEmails,
+          migratedBytes: runBytes,
+        })
+        .where(eq(syncRun.id, runId));
+      publish({ kind: 'sync-run-finished', runId, ok: false, error: 'cancelled' });
+      publish({
+        kind: 'sync-status',
+        running: false,
+        ok: false,
+        error: 'cancelled',
+        manual,
+        runId,
+      });
+      void db.insert(migrationLog).values({
+        migrationId: id,
+        syncRunId: runId,
+        level: 'warn',
+        message: 'Sync cancelled by user',
+      });
+      return { cancelled: true };
+    }
+
     const errorMessage = e?.message ?? 'imapsync exited with error';
     const finishedAt = new Date();
     await db.update(migration).set({ syncRunning: false }).where(eq(migration.id, id));
@@ -263,5 +332,8 @@ export async function handleSyncJob(job: Job<{ migrationId: string; manual?: boo
     throw e;
   } finally {
     if (cleanupRef.fn) await cleanupRef.fn();
+    // Tear down the cancel subscriber connection.
+    await cancelSub.unsubscribe(cancelChannel).catch(() => {});
+    await cancelSub.quit().catch(() => {});
   }
 }

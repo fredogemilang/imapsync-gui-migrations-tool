@@ -126,6 +126,25 @@ export function MigrationOptionsCard({
     }
   };
 
+  const onStopSync = async () => {
+    setBusy(true);
+    try {
+      await api.stopSync(id);
+      // The worker takes a moment to SIGTERM + commit the DB flip. Poll
+      // every 1s for up to 10s so the UI reflects status='cancelled'
+      // without the user having to refresh manually. We don't break on
+      // syncRunning=false because that flag is captured in this closure
+      // from the parent's previous render — refresh updates parent state,
+      // which re-renders this component, which is enough.
+      for (let i = 0; i < 10; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        await onRefresh();
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onModeChange = async (mode: 'auto' | 'backup') => {
     setSelectedMode(mode);
     if (syncEnabled) {
@@ -269,15 +288,28 @@ export function MigrationOptionsCard({
             </div>
           )}
 
-          {/* Sync Now Button */}
-          <button
-            onClick={onSyncNow}
-            disabled={busy || data.syncRunning}
-            className="w-full bg-primary-container hover:bg-primary-dark text-white rounded-xl py-3.5 flex items-center justify-center font-bold text-[15px] shadow-sm cursor-pointer transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            <RefreshCw className={cn('h-5 w-5 mr-2', data.syncRunning && 'animate-spin')} />
-            {data.syncRunning ? 'Syncing…' : 'Sync Now'}
-          </button>
+          {/* Sync Now / Stop button — depends on whether a sync is in flight.
+              While running, the Sync Now action is replaced with a red Stop
+              that SIGTERMs the imapsync child via POST /sync/stop. */}
+          {data.syncRunning ? (
+            <button
+              onClick={onStopSync}
+              disabled={busy}
+              className="w-full bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl py-3.5 flex items-center justify-center font-bold text-[15px] shadow-sm cursor-pointer transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className="h-5 w-5 mr-2 animate-spin" />
+              {busy ? 'Stopping…' : 'Stop Sync'}
+            </button>
+          ) : (
+            <button
+              onClick={onSyncNow}
+              disabled={busy}
+              className="w-full bg-primary-container hover:bg-primary-dark text-white rounded-xl py-3.5 flex items-center justify-center font-bold text-[15px] shadow-sm cursor-pointer transition-colors duration-200 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className="h-5 w-5 mr-2" />
+              Sync Now
+            </button>
+          )}
         </div>
 
         {/* Advanced Settings Accordion */}

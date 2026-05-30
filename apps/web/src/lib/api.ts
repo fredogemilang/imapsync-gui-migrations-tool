@@ -110,6 +110,12 @@ export const api = {
     ),
   disableSync: (id: string) => request(`/api/migrations/${id}/sync/disable`, { method: 'POST' }),
   syncNow: (id: string) => request(`/api/migrations/${id}/sync/now`, { method: 'POST' }),
+  /** Cancel an in-flight sync run for a single migration. Returns ok=false
+   *  with reason='no-sync-running' when nothing was running (idempotent). */
+  stopSync: (id: string) =>
+    request<{ ok: boolean; reason?: string }>(`/api/migrations/${id}/sync/stop`, {
+      method: 'POST',
+    }),
   /** List sync runs for a single migration (latest 50, newest first). */
   listSyncRuns: (id: string) => request<SyncRun[]>(`/api/migrations/${id}/sync-runs`),
   /** Logs for one sync run, newest first. */
